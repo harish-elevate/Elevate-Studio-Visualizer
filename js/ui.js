@@ -114,6 +114,22 @@ export function showModal(title, fields, options = {}) {
             group.style.justifyContent = 'flex-end';
             group.append(label);
             group.append(inputEl);
+            
+        } else if (f.type === 'select') {
+            group.append(label);
+            const selectEl = createElement('select', { 
+                id: `modal-${f.id}`, 
+                name: f.id, 
+                style: 'width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; font-family: var(--font-body);' 
+            });
+            f.options.forEach(opt => {
+                const isSelected = f.value === opt.value;
+                const optEl = createElement('option', { value: opt.value, textContent: opt.label });
+                if (isSelected) optEl.selected = true;
+                selectEl.append(optEl);
+            });
+            group.append(selectEl);
+
         } else {
             group.append(label);
             const attributes = { 
@@ -151,12 +167,11 @@ export function showModal(title, fields, options = {}) {
     getEl('modal').classList.remove('hidden');
     getEl('modalSave').classList.remove('hidden');
 
-    const firstInput = form.querySelector('input:not([type=file]), textarea');
+    const firstInput = form.querySelector('input:not([type=file]), textarea, select');
     if (firstInput) {
         setTimeout(() => firstInput.focus(), 100);
     }
 }
-
 export function showSortableListModal(title, items, saveCallback) {
     const modal = getEl('modal');
     const modalContent = modal.querySelector('.modal-content');

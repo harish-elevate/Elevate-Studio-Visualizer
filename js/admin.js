@@ -479,6 +479,187 @@ export function exitPositionEditMode() {
     renderAdminCanvas();
 }
 
+export function enterGearEditMode(id, targetType) {
+    state.editingOptionPositionId = `gear_${targetType}_${id}`;
+    
+    const item = targetType === 'OptionSet' ? db.OptionSet.find(o => o.id === id) : db.Option.find(o => o.id === id);
+    const itemName = item.Name;
+    
+    const gearIconUrl = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="%23ec8d44" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>';
+
+    const controls = getEl('position-editor-controls');
+    controls.innerHTML = '';
+    
+    // UI Buttons
+    const saveBtn = createElement('button', { id: 'savePosBtn', type: 'button', textContent: 'Save Gear Position', style: 'width:100%; margin-bottom: 10px;' });
+    const assignBtn = createElement('button', { id: 'assignGearBtn', type: 'button', textContent: 'Assign to Existing Gear', style: 'width:100%; margin-bottom: 15px; background-color: var(--secondary-color);' });
+    const removeBtn = createElement('button', { id: 'removePosBtn', type: 'button', className: 'btn-danger', textContent: 'Remove Gear', style: 'flex:1;' });
+    const cancelBtn = createElement('button', { id: 'cancelPosBtn', type: 'button', className: 'btn-secondary', textContent: 'Cancel', style: 'flex:1;' });
+
+    const btnRow = createElement('div', { style: 'display:flex; gap:10px;' }, [removeBtn, cancelBtn]);
+
+    const instructionText = createElement('p', { textContent: 'Drag the solid orange gear to place it.', style: 'font-size:0.9rem; color:#666; margin-bottom:15px; line-height: 1.4;' });
+
+    // 1. Assign Logic (Show ghost gears on demand)
+    assignBtn.addEventListener('click', () => {
+        assignBtn.disabled = true;
+        assignBtn.textContent = 'Select a faded gear on the canvas...';
+        instructionText.textContent = 'Click any faded gear to instantly snap to its location.';
+
+        const floorSets = db.OptionSet.filter(os => os.BelongsToFloor === state.currentFloorId && os.Gear_X !== null);
+        const floorOptions = db.Option.filter(o => floorSets.map(s => s.id).includes(o.BelongsToOptionSet) && o.Gear_X !== null);
+        
+        const uniqueCoords = new Map();
+        floorSets.forEach(s => {
+            if (targetType === 'OptionSet' && s.id === id) return;
+            uniqueCoords.set(`${s.Gear_X},${s.Gear_Y}`, { x: s.Gear_X, y: s.Gear_Y });
+        });
+        floorOptions.forEach(o => {
+            if (targetType === 'Option' && o.id === id) return;
+            uniqueCoords.set(`${o.Gear_X},${o.Gear_Y}`, { x: o.Gear_X, y: o.Gear_Y });
+        });
+
+        const bg = adminFabricCanvas.bgMetrics;
+
+        // Render Ghost Gears
+        uniqueCoords.forEach(coords => {
+            fabric.Image.fromURL(gearIconUrl, (img) => {
+                const left = bg.offsetX + (coords.x / 100) * bg.width - (img.width/2);
+                const top = bg.offsetY + (coords.y / 100) * bg.height - (img.height/2);
+
+                img.set({
+                    left: left, top: top,
+                    selectable: false, evented: true, opacity: 0.35, hoverCursor: 'pointer',
+                    data: { isGhost: true }
+                });
+                
+                // Snap active gear to this position on click
+                img.on('mousedown', () => {
+                    const activeGear = adminFabricCanvas.getObjects().find(o => o.data && o.data.isGear);
+                    if(activeGear) {
+                        activeGear.set({ left: img.left, top: img.top });
+                        adminFabricCanvas.renderAll();
+                    }
+                });
+                adminFabricCanvas.add(img);
+                
+                // Ensure active gear stays on top of newly rendered ghosts
+                const activeGear = adminFabricCanvas.getObjects().find(o => o.data && o.data.isGear);
+                if(activeGear) activeGear.bringToFront();
+                
+                adminFabricCanvas.renderAll();
+            });
+        });
+    });
+
+    // 2. Save Logic
+    saveBtn.addEventListener('click', async () => {
+        if (!adminFabricCanvas || !adminFabricCanvas.bgMetrics) return;
+        
+        const objects = adminFabricCanvas.getObjects();
+        const target = objects.find(o => o.data && o.data.isGear);
+        if (!target) return;
+
+        const bg = adminFabricCanvas.bgMetrics;
+        const centerLeft = target.left + (target.width * target.scaleX) / 2;
+        const centerTop = target.top + (target.height * target.scaleY) / 2;
+        const relativeLeft = centerLeft - bg.offsetX;
+        const relativeTop = centerTop - bg.offsetY;
+
+        const gearXPct = (relativeLeft / bg.width) * 100;
+        const gearYPct = (relativeTop / bg.height) * 100;
+
+        saveBtn.textContent = 'Saving...';
+        
+        try {
+            if (targetType === 'OptionSet') {
+                await data.updateOptionSet(id, { Gear_X: gearXPct, Gear_Y: gearYPct });
+                const localSet = db.OptionSet.find(o => o.id === id);
+                if(localSet) { localSet.Gear_X = gearXPct; localSet.Gear_Y = gearYPct; }
+            } else {
+                await data.updateOption(id, { Gear_X: gearXPct, Gear_Y: gearYPct });
+                const localOpt = db.Option.find(o => o.id === id);
+                if(localOpt) { localOpt.Gear_X = gearXPct; localOpt.Gear_Y = gearYPct; }
+            }
+            exitPositionEditMode();
+        } catch(err) {
+            console.error("Save failed", err);
+            alert("Failed to save gear position.");
+            saveBtn.textContent = 'Save Gear Position';
+        }
+    });
+
+    // 3. Remove Logic
+    removeBtn.addEventListener('click', async () => {
+        if (!confirm("Are you sure you want to remove this gear icon? It will be hidden from the client visualizer until you place it again.")) return;
+        
+        removeBtn.textContent = 'Removing...';
+        try {
+            if (targetType === 'OptionSet') {
+                await data.updateOptionSet(id, { Gear_X: null, Gear_Y: null });
+                const localSet = db.OptionSet.find(o => o.id === id);
+                if(localSet) { localSet.Gear_X = null; localSet.Gear_Y = null; }
+            } else {
+                await data.updateOption(id, { Gear_X: null, Gear_Y: null });
+                const localOpt = db.Option.find(o => o.id === id);
+                if(localOpt) { localOpt.Gear_X = null; localOpt.Gear_Y = null; }
+            }
+            exitPositionEditMode();
+        } catch(err) {
+            console.error("Remove failed", err);
+            alert("Failed to remove gear position.");
+            removeBtn.textContent = 'Remove Gear';
+        }
+    });
+
+    cancelBtn.addEventListener('click', exitPositionEditMode);
+
+    controls.append(
+        createElement('h4', { textContent: `Gear Settings: ${itemName}`, style: 'margin-bottom:10px; color: var(--primary-color);' }),
+        instructionText,
+        saveBtn,
+        assignBtn,
+        btnRow
+    );
+    controls.classList.remove('hidden');
+    
+    // Disable all other sidebar buttons (excluding our 4 new IDs)
+    const activeIds = ['savePosBtn', 'cancelPosBtn', 'removePosBtn', 'assignGearBtn'];
+    getEl('adminEditor').querySelector('.controls-column').querySelectorAll('button, a').forEach(el => { 
+        if(!activeIds.includes(el.id)) { 
+            el.disabled = true; el.style.opacity = '0.5'; 
+        }
+    });
+
+    // Render Initial Canvas (Background dimming + Active Gear only)
+    if(adminFabricCanvas) {
+        const objects = adminFabricCanvas.getObjects();
+        objects.forEach(obj => { obj.set({ selectable: false, evented: false, opacity: 0.2 }); });
+        
+        const bg = adminFabricCanvas.bgMetrics;
+
+        fabric.Image.fromURL(gearIconUrl, (img) => {
+            const existingX = item.Gear_X !== null ? item.Gear_X : 50; 
+            const existingY = item.Gear_Y !== null ? item.Gear_Y : 50;
+
+            const left = bg.offsetX + (existingX / 100) * bg.width - (img.width/2);
+            const top = bg.offsetY + (existingY / 100) * bg.height - (img.height/2);
+
+            img.set({
+                left: left, top: top,
+                selectable: true, evented: true, opacity: 1,
+                hasControls: false, hasBorders: true, borderColor: '#ec8d44',
+                data: { isGear: true }
+            });
+            
+            adminFabricCanvas.add(img);
+            adminFabricCanvas.setActiveObject(img);
+            img.bringToFront();
+            adminFabricCanvas.renderAll();
+        });
+    }
+}
+
 // --- ADMIN RENDER ---
 export function initAdminDashboard() { 
     renderAdminDashboard(); 
@@ -636,13 +817,18 @@ export function renderAdminEditorControls() {
     newCreateBtn.addEventListener('click', () => {
          showModal('Create New Option Set', [
             { label: 'Option Set Name', id: 'Name' },
-            { label: 'Allow Multiple Selections', id: 'allow_multiple_selections', type: 'checkbox' }
+            { label: 'Allow Multiple Selections', id: 'allow_multiple_selections', type: 'checkbox' },
+            { label: 'Gear Icon Mode', id: 'icon_mode', type: 'select', options: [
+                { value: 'set_level', label: 'Single Icon for Whole Set' },
+                { value: 'option_level', label: 'Individual Icon for Each Option' }
+            ], value: 'set_level' }
         ]);
          state.modalSaveCallback = async formData => {
             if (formData.Name) {
                 formData.BelongsToFloor = state.currentFloorId;
                 formData.position = db.OptionSet.filter(os => os.BelongsToFloor === state.currentFloorId).length;
                 formData.allow_multiple_selections = !!formData.allow_multiple_selections; 
+                formData.icon_mode = formData.icon_mode || 'set_level';
                 await data.addOptionSet(formData);
                 await loadDataFromSupabase();
                 renderAdminEditor();
@@ -661,13 +847,18 @@ export function renderAdminEditorControls() {
             const set = db.OptionSet.find(s => s.id === optionSet.id);
             showModal('Edit Option Set', [
                 { label: 'Set Name', id: 'Name', value: set.Name },
-                { label: 'Allow Multiple Selections', id: 'allow_multiple_selections', type: 'checkbox', checked: set.allow_multiple_selections }
+                { label: 'Allow Multiple Selections', id: 'allow_multiple_selections', type: 'checkbox', checked: set.allow_multiple_selections },
+                { label: 'Gear Icon Mode', id: 'icon_mode', type: 'select', options: [
+                    { value: 'set_level', label: 'Single Icon for Whole Set' },
+                    { value: 'option_level', label: 'Individual Icon for Each Option' }
+                ], value: set.icon_mode || 'set_level' }
             ]);
             state.modalSaveCallback = async (formData) => {
                 if(formData.Name) {
                     await data.updateOptionSet(optionSet.id, { 
                         Name: formData.Name, 
-                        allow_multiple_selections: !!formData.allow_multiple_selections 
+                        allow_multiple_selections: !!formData.allow_multiple_selections,
+                        icon_mode: formData.icon_mode
                     });
                     await loadDataFromSupabase();
                     renderAdminEditor();
@@ -677,6 +868,17 @@ export function renderAdminEditorControls() {
         });
 
         const headerButtons = [ editSetBtn ];
+
+        // ADJUST GEAR ICON (SET LEVEL)
+        if (!isElevationTab && (!optionSet.icon_mode || optionSet.icon_mode === 'set_level')) {
+            const adjustGearBtn = createElement('button', { type: 'button', className: 'btn-secondary optionset-gear-btn', textContent: 'Gear Settings' });
+            adjustGearBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                enterGearEditMode(optionSet.id, 'OptionSet');
+                window.scrollTo(0, 0);
+            });
+            headerButtons.push(adjustGearBtn);
+        }
         
         // LAYER ORDER
         if (optionSet.allow_multiple_selections) {
@@ -751,14 +953,24 @@ export function renderAdminEditorControls() {
 
             const actions = [ editOptBtn, galleryBtn ];
             
-            // ADJUST POSITION
+            // ADJUST POSITION (OVERLAY)
             if (!isElevationTab) {
-                const adjustBtn = createElement('button', { type: 'button', className: 'option-adjust-btn', textContent: 'Adjust Position' });
+                const adjustBtn = createElement('button', { type: 'button', className: 'option-adjust-btn', textContent: 'Adjust Overlay' });
                 adjustBtn.addEventListener('click', () => {
                     enterPositionEditMode(option.id);
                     window.scrollTo(0, 0);
                 });
                 actions.push(adjustBtn);
+
+                // ADJUST GEAR ICON (OPTION LEVEL)
+                if (optionSet.icon_mode === 'option_level') {
+                    const adjustOptGearBtn = createElement('button', { type: 'button', className: 'btn-secondary', textContent: 'Gear Settings' });
+                    adjustOptGearBtn.addEventListener('click', () => {
+                        enterGearEditMode(option.id, 'Option');
+                        window.scrollTo(0, 0);
+                    });
+                    actions.push(adjustOptGearBtn);
+                }
             }
             
             actions.push(deleteBtn);
