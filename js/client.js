@@ -1,4 +1,5 @@
 import { state, db, loadDataFromSupabase } from './state.js';
+import { supabase } from './supabaseClient.js';
 
 // --- DOM UTILITIES ---
 const getEl = (id) => document.getElementById(id);
@@ -786,9 +787,9 @@ function openLeadCaptureModal() {
     getEl('modalForm').innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 15px; margin-top: 15px;">
             <p style="color: #666; font-size: 0.9rem; margin-bottom: 5px;">Please enter your details to generate your custom home brochure.</p>
-            <input type="text" id="pdfClientName" placeholder="Full Name" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);" required>
-            <input type="email" id="pdfClientEmail" placeholder="Email Address" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);" required>
-            <input type="tel" id="pdfClientPhone" placeholder="Phone Number" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);">
+            <input type="text" id="pdfClientName" placeholder="Full Name (Required)" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);" required>
+            <input type="email" id="pdfClientEmail" placeholder="Email Address (Required)" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);" required>
+            <input type="tel" id="pdfClientPhone" placeholder="Phone Number (Optional)" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);">
         </div>
     `;
     
@@ -802,9 +803,57 @@ function openLeadCaptureModal() {
     
     getEl('modalCancel').onclick = () => hide('modal');
     
-    newSaveBtn.addEventListener('click', () => {
-        hide('modal');
-        generatePDFBrochure();
+    // VALIDATION AND SAVING LOGIC
+    newSaveBtn.addEventListener('click', async () => {
+        const nameInput = getEl('pdfClientName');
+        const emailInput = getEl('pdfClientEmail');
+        const phoneInput = getEl('pdfClientPhone');
+
+        const name = nameInput.value.trim();
+        const email = emailInput.value.trim();
+        const phone = phoneInput.value.trim();
+
+        // 1. Validation: Block empty submissions and highlight red
+        if (!name || !email) {
+            alert("Please provide your Name and Email to download your custom brochure.");
+            nameInput.style.borderColor = name ? '#ccc' : 'red';
+            emailInput.style.borderColor = email ? '#ccc' : 'red';
+            return; // Stops the function right here!
+        }
+
+        // Reset borders if they fixed the errors
+        nameInput.style.borderColor = '#ccc';
+        emailInput.style.borderColor = '#ccc';
+
+        // 2. Visual feedback
+        newSaveBtn.textContent = 'Preparing PDF...';
+        newSaveBtn.disabled = true;
+
+        // 3. Save to Supabase
+        try {
+            const currentModel = db.ModelHome.find(m => m.id === state.currentModelHomeId);
+            const modelName = currentModel ? currentModel.Name : 'Custom Home';
+
+            const { error } = await supabase.from('Leads').insert([{
+                client_name: name,
+                client_email: email,
+                client_phone: phone,
+                model_name: modelName,
+                selections_json: state.customizerSelections
+            }]);
+
+            if (error) throw error;
+
+            // 4. Success! Hide modal and generate PDF
+            hide('modal');
+            generatePDFBrochure();
+
+        } catch (err) {
+            console.error("Error saving lead:", err);
+            alert("There was an issue processing your request. Please try again.");
+            newSaveBtn.textContent = 'Download Brochure';
+            newSaveBtn.disabled = false;
+        }
     });
     
     show('modal');
