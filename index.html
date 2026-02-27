@@ -3,186 +3,102 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Custom Home Plan Builder | Elevate Design + Build</title>
+    <title>Guided Home Builder | Elevate Design + Build</title>
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz@9..40&family=Montserrat:wght@600;700&display=swap" rel="stylesheet">
-    
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
-    
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" />
-    
     <link rel="stylesheet" href="style.css">
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
-    
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
 </head>
 <body>
 
     <header class="app-header">
-        <div class="header-left"><a href="#" id="headerTitleLink">Custom Home Plan Builder</a></div>
+        <div class="header-left"><a href="#" id="headerTitleLink">Custom Home Builder</a></div>
         <div class="header-brand"><a href="#" id="logoLink"><h1>Elevate Design + Build</h1></a></div>
-        <div class="header-right"><button type="button" id="adminLoginBtn">Admin Login</button></div>
+        <div class="header-right">
+            </div>
     </header>
 
     <main id="app">
         <div id="landingPage">
             <section class="landing-intro">
-                <h2>Create Your Dream Home</h2>
-                <p>Welcome to Elevate Design + Build. We don't just build houses; we craft bespoke homes tailored to your lifestyle. Our interactive builder is the first step in turning your dream into a detailed, personalized reality. Explore our models and start designing today.</p>
+                <h2>Select Your Base Model</h2>
+                <p>Choose a model home to begin your guided customization journey.</p>
             </section>
             <section class="models-section">
-                <h3>Explore Our Models</h3>
                 <div id="modelHomeGrid" class="model-home-grid">
                     <p>Loading models...</p>
                 </div>
             </section>
         </div>
 
-        <div id="customizerPage" class="page-container hidden">
+        <div id="wizardPage" class="page-container hidden">
+            
+            <div class="wizard-progress-bar">
+                <div class="wizard-step" data-step="1">1. Elevation</div>
+                <div class="wizard-step" data-step="2">2. Main Level</div>
+                <div class="wizard-step" data-step="3">3. Basement</div>
+                <div class="wizard-step" data-step="4">4. Review</div>
+            </div>
+
             <div class="main-view">
-                <div class="controls-column">
-                    <nav id="customizerFloorTabs" class="floor-tabs"></nav>
-                    <div id="customizerOptionSets" class="option-set-container"></div>
-                    <div class="customizer-actions">
-                        <button type="button" id="exportPlanBtn">Export as PNG</button>
-                        <button type="button" id="exportPdfBtn" class="btn-secondary">Export as PDF</button>
-                    </div>
-                </div>
                 <div class="canvas-column">
                     <div class="canvas-controls">
                         <div class="zoom-controls">
-                            <span>Zoom:</span> <button type="button" id="zoomInBtn" title="Zoom In">+</button> <button type="button" id="zoomOutBtn" title="Zoom Out">-</button> <button type="button" id="zoomResetBtn" class="btn-secondary" title="Reset View">Reset</button>
+                            <button type="button" id="zoomInBtn" title="Zoom In">+</button> 
+                            <button type="button" id="zoomOutBtn" title="Zoom Out">-</button> 
+                            <button type="button" id="zoomResetBtn" class="btn-secondary" title="Reset View">Reset</button>
                         </div>
                     </div>
-                    
-                    <div id="markup-bar">
-                        <button type="button" id="undoBtn" title="Undo (Ctrl+Z)" disabled>
-                            <span class="material-symbols-outlined">undo</span>
-                        </button>
-                        <button type="button" id="redoBtn" title="Redo (Ctrl+Y)" disabled>
-                            <span class="material-symbols-outlined">redo</span>
-                        </button>
-                        
-                        <div class="separator"></div>
-
-                        <button type="button" data-tool="select" title="Select (Drag to Box Select)" class="active">
-                            <span class="material-symbols-outlined">near_me</span>
-                        </button>
-                        <button type="button" data-tool="pan" title="Pan Tool (Drag to Move View)">
-                            <span class="material-symbols-outlined">hand_gesture</span>
-                        </button>
-                        
-                        <div class="separator"></div>
-
-                        <button type="button" data-tool="line" title="Draw Line">
-                            <span class="material-symbols-outlined">remove</span>
-                        </button>
-                        <button type="button" data-tool="freeform" title="Freeform Draw">
-                            <span class="material-symbols-outlined">draw</span>
-                        </button>
-                        <button type="button" data-tool="text" title="Add Text">
-                            <span class="material-symbols-outlined">title</span>
-                        </button>
-                        
-                        <div class="separator"></div>
-
-                        <div class="tool-property">
-                            <input type="color" id="markupColor" title="Select Color" value="#ff0000">
-                        </div>
-                        <div class="tool-property stroke-control">
-                            <span class="material-symbols-outlined small-icon">line_weight</span>
-                            <input type="range" id="markupThickness" min="1" max="20" value="3" title="Line Thickness">
-                        </div>
-                        
-                        <div class="separator"></div>
-
-                        <button type="button" id="deleteMarkupBtn" title="Delete Selected">
-                            <span class="material-symbols-outlined">delete</span>
-                        </button>
-                    </div>
-
                     <div class="canvas-wrapper">
                         <div id="customizerCanvasContainer" class="canvas-container">
                             <canvas id="markupCanvas"></canvas>
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
-        
-        <div id="adminDashboard" class="page-container hidden">
-            <div class="admin-header">
-                <h2>Admin Dashboard</h2>
-                <div><button type="button" id="createModelHomeBtn">Create New Model</button></div>
-            </div>
-            <div id="adminModelHomeGrid" class="model-home-grid"></div>
-        </div>
 
-        <div id="adminModelManagementPage" class="page-container hidden">
-            <div class="admin-header">
-                <h2 id="manageModelHeader"></h2>
-                <div><button type="button" id="backToAdminDashboardBtn" class="btn-secondary">&larr; Back to Dashboard</button></div>
-            </div>
-            <div class="management-content-wrapper">
-                <img id="manageModelImage" src="" alt="Model cover image" />
-                <div class="management-actions-wrapper">
-                    <div class="management-main-actions">
-                        <button type="button" id="manageEditDetailsBtn" class="btn-secondary">Edit Details</button>
-                        <button type="button" id="manageFloorsBtn">Manage Floors & Options</button>
+                <div class="controls-column" id="wizardSidebar">
+                    <div id="sidebarDefaultMessage">
+                        <h3>Customize this floor</h3>
+                        <p>Click on any glowing gear icon on the floor plan to view available upgrades for that room.</p>
                     </div>
-                    <div class="management-danger-zone">
-                        <button type="button" id="manageDeleteBtn" class="btn-danger-outline">Delete This Model</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div id="adminEditor" class="page-container hidden">
-            <div class="main-view">
-                <div class="controls-column">
-                    <div id="editorHeader" class="admin-header">
-                        <h2>Editing: <span class="model-name"></span></h2>
-                        <div><button type="button" id="editorBackToManageBtn" class="btn-secondary">&larr; Back</button></div>
-                    </div>
-                    <div class="admin-tab-controls">
-                        <nav id="adminFloorTabs" class="floor-tabs"></nav>
-                        <button type="button" id="createFloorBtn" title="Add New Floor" aria-label="Add New Floor">+</button>
-                    </div>
-                    <div id="adminFloorManagement" class="admin-floor-management"></div>
-                    <div id="adminOptionSetsContainer"></div>
-                    <button type="button" id="createOptionSetBtn" style="margin-top: 20px;">Create New Option Set</button>
-                    <div id="position-editor-controls" class="hidden"></div>
-                </div>
-                <div class="canvas-column">
-                    <div class="canvas-controls">
-                        <div class="zoom-controls">
-                            <span>Zoom:</span> <button type="button" id="adminZoomInBtn">+</button> <button type="button" id="adminZoomOutBtn">-</button> <button type="button" id="adminZoomResetBtn" class="btn-secondary">Reset</button>
+                    <div id="customizerOptionSets" class="option-set-container hidden">
                         </div>
-                    </div>
-                    <div class="canvas-wrapper"><div id="adminCanvasContainer" class="canvas-container"></div></div>
                 </div>
+            </div>
+
+            <div class="wizard-navigation">
+                <button type="button" id="wizardBackBtn" class="btn-secondary hidden">&larr; Back</button>
+                <button type="button" id="wizardNextBtn">Next Step &rarr;</button>
+            </div>
+        </div>
+
+        <div id="reviewPage" class="page-container hidden">
+            <div class="review-header">
+                <h2>Review Your Design</h2>
+                <p>Review your selections below and generate your custom brochure.</p>
+            </div>
+            <div id="reviewContent" class="review-content">
+                </div>
+            <div class="wizard-navigation">
+                <button type="button" id="reviewBackBtn" class="btn-secondary">&larr; Back to Customizer</button>
+                <button type="button" id="exportBrochureBtn" style="background-color: var(--primary-color);">Generate Brochure</button>
             </div>
         </div>
     </main>
-
-    <footer class="app-footer">Elevating the Home Building Experience.</footer>
 
     <div id="modal" class="modal-overlay hidden">
         <div class="modal-content">
             <h3 id="modalTitle"></h3>
             <form id="modalForm" onsubmit="return false;"></form>
             <div class="modal-actions">
-                <button type="button" id="modalCancel" class="btn-secondary">Cancel</button>
-                <button type="button" id="modalSave">Save</button>
+                <button type="button" id="modalCancel" class="btn-secondary">Close</button>
+                <button type="button" id="modalSave" class="hidden">Save</button>
             </div>
         </div>
     </div>
@@ -191,6 +107,6 @@
         <div class="spinner"></div>
     </div>
 
-    <script src="js/main.js?v=2" type="module" defer></script>
+    <script src="js/client.js" type="module" defer></script>
 </body>
 </html>
