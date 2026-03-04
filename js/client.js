@@ -379,17 +379,29 @@ async function renderActiveOverlays(floorData, bgMetrics) {
 const getGearKey = (x, y) => `${Number(x).toFixed(4)},${Number(y).toFixed(4)}`;
 
 function renderGearIcons(floorData, bgMetrics) {
-    const gearIconUrl = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="%23ec8d44" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>';
+    // 1. DEFAULT STATE: More transparent glass circle (55% white) with a grey plus sign
+    const defaultIconUrl = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="rgba(255, 255, 255, 0.55)" stroke="none"/><path d="M16 10v12M10 16h12" stroke="%23888888" stroke-width="2" stroke-linecap="round"/></svg>';
+    
+    // 2. ACTIVE / HOVER STATE: Solid white circle (95% white) with orange plus sign
+    const activeIconUrl = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="rgba(255, 255, 255, 0.95)" stroke="none"/><path d="M16 10v12M10 16h12" stroke="%23ec8d44" stroke-width="2" stroke-linecap="round"/></svg>';
 
     const floorSets = db.OptionSet.filter(os => os.BelongsToFloor === floorData.id);
     const allSelectedIds = Object.values(state.customizerSelections).flat();
     const gearMap = new Map();
 
+    // MAP SET-LEVEL HOTSPOTS (and check if they have a selection)
     floorSets.filter(os => (!os.icon_mode || os.icon_mode === 'set_level') && os.Gear_X !== null).forEach(os => {
         const key = getGearKey(os.Gear_X, os.Gear_Y);
-        if (!gearMap.has(key)) gearMap.set(key, { x: os.Gear_X, y: os.Gear_Y }); 
+        const hasSelection = state.customizerSelections[os.id] && state.customizerSelections[os.id].length > 0;
+        
+        if (!gearMap.has(key)) {
+            gearMap.set(key, { x: os.Gear_X, y: os.Gear_Y, isActive: hasSelection }); 
+        } else if (hasSelection) {
+            gearMap.get(key).isActive = true; // If multiple sets share a dot, mark active if ANY are selected
+        }
     });
 
+    // MAP OPTION-LEVEL HOTSPOTS (and check if they are selected)
     const floorOptions = db.Option.filter(o => floorSets.map(s => s.id).includes(o.BelongsToOptionSet) && o.Gear_X !== null);
     
     floorOptions.forEach(opt => {
@@ -400,25 +412,45 @@ function renderGearIcons(floorData, bgMetrics) {
         const parentSet = floorSets.find(s => s.id === opt.BelongsToOptionSet);
         if (parentSet && parentSet.icon_mode === 'option_level') {
             const key = getGearKey(opt.Gear_X, opt.Gear_Y);
-            if (!gearMap.has(key)) gearMap.set(key, { x: opt.Gear_X, y: opt.Gear_Y });
+            const isSelected = allSelectedIds.includes(opt.id);
+            
+            if (!gearMap.has(key)) {
+                gearMap.set(key, { x: opt.Gear_X, y: opt.Gear_Y, isActive: isSelected });
+            } else if (isSelected) {
+                gearMap.get(key).isActive = true;
+            }
         }
     });
 
-    gearMap.forEach((coords, keyString) => {
-        fabric.Image.fromURL(gearIconUrl, (img) => {
-            const left = bgMetrics.offsetX + (coords.x / 100) * bgMetrics.width - (img.width/2);
-            const top = bgMetrics.offsetY + (coords.y / 100) * bgMetrics.height - (img.height/2);
+    // RENDER THE ICONS
+    gearMap.forEach((data, keyString) => {
+        const { x, y, isActive } = data;
+        
+        // If it's already customized, render it as Active (Orange). Otherwise, Default (Grey).
+        const initialIconUrl = isActive ? activeIconUrl : defaultIconUrl;
+
+        fabric.Image.fromURL(initialIconUrl, (img) => {
+            const left = bgMetrics.offsetX + (x / 100) * bgMetrics.width - (img.width/2);
+            const top = bgMetrics.offsetY + (y / 100) * bgMetrics.height - (img.height/2);
 
             img.set({
                 left: left, top: top,
                 selectable: false, evented: true, hoverCursor: 'pointer',
-                shadow: new fabric.Shadow({ color: 'rgba(0,0,0,0.5)', blur: 5, offsetX: 2, offsetY: 2 }),
-                data: { isGear: true, layerOrder: 9999 }
+                shadow: new fabric.Shadow({ color: 'rgba(0,0,0,0.15)', blur: 6, offsetX: 0, offsetY: 2 }),
+                data: { isGear: true, layerOrder: 9999 } 
             });
             
-            animateGear(img);
+            // Hover logic: only change colors if it isn't ALREADY active
+            img.on('mouseover', () => {
+                if (!isActive) img.setSrc(activeIconUrl, () => clientCanvas.renderAll());
+            });
+            
+            img.on('mouseout', () => {
+                if (!isActive) img.setSrc(defaultIconUrl, () => clientCanvas.renderAll());
+            });
             
             img.on('mousedown', () => openSidebarMenu(keyString));
+            
             clientCanvas.add(img);
         });
     });
@@ -468,20 +500,6 @@ function captureCanvasSnapshot() {
     clientCanvas.renderAll();
 
     return dataUrl;
-}
-
-function animateGear(img) {
-    img.animate('opacity', 0.6, {
-        duration: 1000,
-        onChange: clientCanvas.renderAll.bind(clientCanvas),
-        onComplete: function() {
-            img.animate('opacity', 1, {
-                duration: 1000,
-                onChange: clientCanvas.renderAll.bind(clientCanvas),
-                onComplete: () => animateGear(img)
-            });
-        }
-    });
 }
 
 function openSidebarMenu(context) {
