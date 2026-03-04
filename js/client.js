@@ -487,6 +487,10 @@ function captureCanvasSnapshot() {
     const originalVpt = clientCanvas.viewportTransform.slice();
     clientCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
 
+    // FIX: Temporarily force a pure white background so the JPEG doesn't render transparent padding as black
+    const originalBgColor = clientCanvas.backgroundColor;
+    clientCanvas.backgroundColor = '#ffffff';
+
     const gears = clientCanvas.getObjects().filter(o => o.data && o.data.isGear);
     const texts = clientCanvas.getObjects().filter(o => o.type === 'text');
     
@@ -511,7 +515,8 @@ function captureCanvasSnapshot() {
     const padding = 10;
 
     const dataUrl = clientCanvas.toDataURL({ 
-        format: 'png', 
+        format: 'jpeg', 
+        quality: 0.8, 
         left: minX - padding,
         top: minY - padding,
         width: (maxX - minX) + (padding * 2),
@@ -519,8 +524,10 @@ function captureCanvasSnapshot() {
         multiplier: 2 
     });
 
+    // Restore the canvas back to exactly how the user left it
     gears.forEach(g => g.set({ opacity: 1 }));
     texts.forEach(t => t.set({ opacity: 1 }));
+    clientCanvas.backgroundColor = originalBgColor;
     clientCanvas.setViewportTransform(originalVpt);
     clientCanvas.renderAll();
 
@@ -932,11 +939,32 @@ async function getBase64ImageFromUrl(imageUrl) {
         img.crossOrigin = 'Anonymous';
         img.onload = () => {
             const canvas = document.createElement('canvas');
-            canvas.width = img.width;
-            canvas.height = img.height;
+            let width = img.width;
+            let height = img.height;
+            
+            // Limit massive gallery photos to a reasonable max dimension for PDFs
+            const maxDim = 1200; 
+            if (width > maxDim || height > maxDim) {
+                if (width > height) {
+                    height = Math.round((height / width) * maxDim);
+                    width = maxDim;
+                } else {
+                    width = Math.round((width / height) * maxDim);
+                    height = maxDim;
+                }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
             const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0);
-            resolve(canvas.toDataURL('image/png'));
+            
+            // Fill white background to prevent transparent areas turning black in JPEG
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Export as JPEG with 75% quality (Massive file size reduction)
+            resolve(canvas.toDataURL('image/jpeg', 0.75));
         };
         img.onerror = () => resolve(null);
         img.src = imageUrl;
@@ -1075,7 +1103,7 @@ async function generatePDFBrochure() {
                     const imgProps = doc.getImageProperties(snapshotUrl);
                     const pdfImgWidth = pageWidth - 40; 
                     pdfImgHeight = (imgProps.height * pdfImgWidth) / imgProps.width;
-                    doc.addImage(snapshotUrl, 'PNG', 20, 40, pdfImgWidth, pdfImgHeight);
+                    doc.addImage(snapshotUrl, 'JPEG', 20, 40, pdfImgWidth, pdfImgHeight);
                 }
 
                 if (isElevation && selectedOptions.length > 0) {
@@ -1111,7 +1139,7 @@ async function generatePDFBrochure() {
                         const thumbProps = doc.getImageProperties(base64Thumb);
                         const thumbWidth = 30; 
                         const thumbHeight = (thumbProps.height * thumbWidth) / thumbProps.width; 
-                        doc.addImage(base64Thumb, 'PNG', 20, yPos, thumbWidth, thumbHeight);
+                        doc.addImage(base64Thumb, 'JPEG', 20, yPos, thumbWidth, thumbHeight);
                     }
 
                     doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(236, 141, 68); 
@@ -1146,7 +1174,7 @@ async function generatePDFBrochure() {
                             const imgUrl = imgData.url || imgData.Url || imgData.URL || imgData.image;
                             const b64 = await getBase64ImageFromUrl(imgUrl);
                             if (b64) {
-                                doc.addImage(b64, 'PNG', 30, yPos, 80, 50); 
+                                doc.addImage(b64, 'JPEG', 30, yPos, 80, 50); 
                                 doc.setFont('helvetica', 'italic').setFontSize(10).setTextColor(100,100,100);
                                 doc.text(`Selected Style: ${pkgName}`, 30, yPos + 55);
                                 yPos += 65;
