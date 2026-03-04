@@ -285,12 +285,14 @@ async function diffAndRenderCanvas(floorData, bgMetrics) {
     const intendedOverlayIds = optionsToDraw.map(o => o.id);
     const currentObjects = clientCanvas.getObjects();
     
+    // 1. Remove overlays that are NO LONGER selected
     currentObjects.forEach(obj => {
         if (obj.data && obj.data.isOverlay) {
             if (!intendedOverlayIds.includes(obj.data.optionId)) clientCanvas.remove(obj);
         }
     });
     
+    // 2. Add NEW overlays
     const existingOverlayIds = clientCanvas.getObjects().filter(o => o.data && o.data.isOverlay).map(o => o.data.optionId);
     
     for (const option of optionsToDraw) {
@@ -309,10 +311,15 @@ async function diffAndRenderCanvas(floorData, bgMetrics) {
                         scaleY = bgMetrics.height / (img.height || 1);
                     }
 
+                    // Extract layer order (Prioritize layer_order, fallback to position, fallback to 0)
+                    const layerVal = option.layer_order !== null && option.layer_order !== undefined 
+                        ? option.layer_order 
+                        : (option.position || 0);
+
                     img.set({
                         left: left, top: top, scaleX: scaleX, scaleY: scaleY,
                         selectable: false, evented: false,
-                        data: { isOverlay: true, optionId: option.id, layerOrder: option.layer_order || 0 }
+                        data: { isOverlay: true, optionId: option.id, layerOrder: Number(layerVal) }
                     });
                     clientCanvas.add(img);
                     resolve();
@@ -321,12 +328,21 @@ async function diffAndRenderCanvas(floorData, bgMetrics) {
         }
     }
     
-    clientCanvas._objects.sort((a, b) => {
-        const orderA = a.data?.layerOrder ?? 0;
-        const orderB = b.data?.layerOrder ?? 0;
-        return orderA - orderB;
+    // 3. THE FIX: Official Fabric.js Z-Index Stacking (INVERTED!)
+    const overlays = clientCanvas.getObjects().filter(o => o.data && o.data.isOverlay);
+    
+    // Sort them so highest numbers go to the back, lowest numbers (1) go to the front
+    overlays.sort((a, b) => {
+        const valA = Number(a.data.layerOrder) || 0;
+        const valB = Number(b.data.layerOrder) || 0;
+        return valB - valA; // <--- The magic flip
     });
 
+    overlays.forEach((obj, index) => {
+        clientCanvas.moveTo(obj, index);
+    });
+
+    // 4. Quickly redraw the gears so they reflect prerequisite changes and stay on absolute top
     clientCanvas.getObjects().forEach(obj => {
         if (obj.data && obj.data.isGear) clientCanvas.remove(obj);
     });
@@ -345,7 +361,12 @@ async function renderActiveOverlays(floorData, bgMetrics) {
     
     const optionsToDraw = db.Option
         .filter(opt => optionSets.map(s => s.id).includes(opt.BelongsToOptionSet) && selectedIds.includes(opt.id))
-        .sort((a, b) => (a.layer_order ?? 0) - (b.layer_order ?? 0));
+        .sort((a, b) => {
+            // INVERTED SORT: Draw highest numbers first (bottom), lowest numbers last (top)
+            const valA = a.layer_order !== null && a.layer_order !== undefined ? Number(a.layer_order) : Number(a.position || 0);
+            const valB = b.layer_order !== null && b.layer_order !== undefined ? Number(b.layer_order) : Number(b.position || 0);
+            return valB - valA; // <--- The magic flip
+        });
 
     for (const option of optionsToDraw) {
         if (!option.OptionImage || option.OptionImage === 'null') continue;
@@ -364,10 +385,14 @@ async function renderActiveOverlays(floorData, bgMetrics) {
                     scaleY = bgMetrics.height / (img.height || 1);
                 }
 
+                const layerVal = option.layer_order !== null && option.layer_order !== undefined 
+                    ? option.layer_order 
+                    : (option.position || 0);
+
                 img.set({
                     left: left, top: top, scaleX: scaleX, scaleY: scaleY,
                     selectable: false, evented: false,
-                    data: { isOverlay: true, optionId: option.id, layerOrder: option.layer_order || 0 }
+                    data: { isOverlay: true, optionId: option.id, layerOrder: Number(layerVal) }
                 });
                 clientCanvas.add(img);
                 resolve();
