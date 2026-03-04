@@ -621,6 +621,24 @@ function handleOptionClick(opt, set) {
                 });
                 state.customizerSelections[set.id] = [opt.id]; 
             } else {
+                // ROBUST GEAR CONFLICT CHECK: Uses getGearKey to ensure exact matching
+                if (opt.Gear_X !== null && opt.Gear_Y !== null) {
+                    const currentGearKey = getGearKey(opt.Gear_X, opt.Gear_Y);
+                    
+                    const conflictingIds = state.customizerSelections[set.id].filter(existingId => {
+                        const existingOpt = db.Option.find(o => o.id === existingId);
+                        if (!existingOpt || existingOpt.id === opt.id) return false;
+                        if (existingOpt.Gear_X === null || existingOpt.Gear_Y === null) return false;
+                        
+                        return getGearKey(existingOpt.Gear_X, existingOpt.Gear_Y) === currentGearKey;
+                    });
+                    
+                    conflictingIds.forEach(conflictId => {
+                        state.customizerSelections[set.id] = state.customizerSelections[set.id].filter(id => id !== conflictId);
+                        if (state.customizerSelections['gallery_picks']) delete state.customizerSelections['gallery_picks'][conflictId];
+                    });
+                }
+                
                 state.customizerSelections[set.id].push(opt.id); 
             }
         }
@@ -723,6 +741,7 @@ function openGalleryModal(opt, set) {
 window.selectGalleryPackage = function(optId, setId, groupName) {
     const floorData = wizardSteps[currentStepIndex];
     const set = db.OptionSet.find(s => s.id == setId);
+    const opt = db.Option.find(o => o.id == optId);
     const allowMultiple = set && set.allow_multiple_selections === true;
 
     if (!state.customizerSelections[setId]) state.customizerSelections[setId] = [];
@@ -735,6 +754,24 @@ window.selectGalleryPackage = function(optId, setId, groupName) {
         });
         state.customizerSelections[setId] = [parseInt(optId)]; 
     } else {
+        // ROBUST GEAR CONFLICT CHECK FOR MODAL SELECTIONS
+        if (opt && opt.Gear_X !== null && opt.Gear_Y !== null) {
+            const currentGearKey = getGearKey(opt.Gear_X, opt.Gear_Y);
+            
+            const conflictingIds = state.customizerSelections[setId].filter(existingId => {
+                const existingOpt = db.Option.find(o => o.id === existingId);
+                if (!existingOpt || existingOpt.id === parseInt(optId)) return false;
+                if (existingOpt.Gear_X === null || existingOpt.Gear_Y === null) return false;
+                
+                return getGearKey(existingOpt.Gear_X, existingOpt.Gear_Y) === currentGearKey;
+            });
+            
+            conflictingIds.forEach(conflictId => {
+                state.customizerSelections[setId] = state.customizerSelections[setId].filter(id => id !== conflictId);
+                if (state.customizerSelections['gallery_picks']) delete state.customizerSelections['gallery_picks'][conflictId];
+            });
+        }
+
         if (!state.customizerSelections[setId].includes(parseInt(optId))) {
             state.customizerSelections[setId].push(parseInt(optId)); 
         }
