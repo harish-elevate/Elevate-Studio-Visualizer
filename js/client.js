@@ -7,21 +7,14 @@ const hide = (id) => getEl(id).classList.add('hidden');
 const show = (id) => getEl(id).classList.remove('hidden');
 
 // --- WIZARD STATE ---
-let wizardSteps = []; // Will hold the dynamically sorted floors + review step
+let wizardSteps = []; 
 let currentStepIndex = 0;
 
 // --- INITIALIZATION ---
 async function initializeClientApp() {
-    // Show loader
     getEl('globalLoader').classList.remove('hidden');
-    
-    // Fetch all data from Supabase
     await loadDataFromSupabase();
-    
-    // Render the landing page grid
     renderLandingPage();
-    
-    // Hide loader
     getEl('globalLoader').classList.add('hidden');
 }
 
@@ -57,10 +50,8 @@ function renderLandingPage() {
 function startWizard(modelId) {
     state.currentModelHomeId = modelId;
     
-    // 1. Gather all floors for this model
     const floors = db.Floor.filter(f => f.BelongsToModel === modelId);
     
-    // 2. Sort them: Elevations first, then the rest by ID (or name)
     wizardSteps = floors.sort((a, b) => {
         const aIsElev = a.Name.toLowerCase().includes('elevation') || a.Name.toLowerCase().includes('exterior');
         const bIsElev = b.Name.toLowerCase().includes('elevation') || b.Name.toLowerCase().includes('exterior');
@@ -69,24 +60,20 @@ function startWizard(modelId) {
         return a.id - b.id;
     });
 
-    // 3. Add the final "Review" step to the array
     wizardSteps.push({ isReview: true, Name: 'Review & Publish' });
 
-    // 4. Set up the UI
     currentStepIndex = 0;
     buildWizardProgressBar();
     
-    // Hide landing page, show wizard
     hide('landingPage');
     show('wizardPage');
     
-    // Load the first step
     loadWizardStep();
 }
 
 function buildWizardProgressBar() {
     const bar = document.querySelector('.wizard-progress-bar');
-    bar.innerHTML = ''; // Clear hardcoded HTML
+    bar.innerHTML = ''; 
     
     wizardSteps.forEach((step, index) => {
         const stepEl = document.createElement('div');
@@ -98,8 +85,8 @@ function buildWizardProgressBar() {
 }
 
 let clientCanvas = null;
-let lastRenderedFloorId = null; // Tracks the floor to prevent background flashing
-let currentActiveSidebarContext = null; // Tracks the currently open menu (either an Array or a Coordinate String)
+let lastRenderedFloorId = null; 
+let currentActiveSidebarContext = null; 
 
 function loadWizardStep() {
     wizardSteps.forEach((step, index) => {
@@ -147,24 +134,21 @@ function renderClientCanvas(floorData) {
             selection: false, preserveObjectStacking: true, defaultCursor: 'grab'
         });
 
-        // 1. Mouse Wheel Zoom
         clientCanvas.on('mouse:wheel', function(opt) {
             var delta = opt.e.deltaY;
             var zoom = clientCanvas.getZoom();
             zoom *= 0.999 ** delta;
-            if (zoom > 5) zoom = 5; // Max zoom
-            if (zoom < 0.2) zoom = 0.2; // Min zoom
+            if (zoom > 5) zoom = 5; 
+            if (zoom < 0.2) zoom = 0.2; 
             clientCanvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
             opt.e.preventDefault();
             opt.e.stopPropagation();
         });
 
-        // 2. Click and Drag to Pan
         let isDragging = false;
         let lastPosX, lastPosY;
 
         clientCanvas.on('mouse:down', function(opt) {
-            // Only pan if we clicked the background, not a gear!
             if (opt.target && opt.target.data && opt.target.data.isGear) return;
             
             const evt = opt.e;
@@ -208,7 +192,6 @@ function renderClientCanvas(floorData) {
             }
         });
 
-        // 3. Touch Pinch Zoom (For Tablets/Phones)
         clientCanvas.on('touch:gesture', function(e) {
             if (e.e.touches && e.e.touches.length == 2) {
                 e.e.preventDefault(); 
@@ -241,18 +224,14 @@ function renderClientCanvas(floorData) {
         }
     }
 
-    // --- TRUE CANVAS DIFFING ---
-    // If we are on the exact same floor and base image, trigger the smart diffing function!
     if (lastRenderedFloorId === floorData.id && clientCanvas.lastImageUrl === imageUrl) {
         diffAndRenderCanvas(floorData, clientCanvas.bgMetrics);
         return;
     }
 
-    // Otherwise, it's a new floor. Do a full wipe.
     lastRenderedFloorId = floorData.id;
     clientCanvas.lastImageUrl = imageUrl;
     
-    // FIX: Reset the camera zoom and pan back to default before drawing the new floor!
     clientCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]); 
     
     clientCanvas.clear();
@@ -266,7 +245,6 @@ function renderClientCanvas(floorData) {
         clientCanvas.add(text);
         clientCanvas.bgMetrics = { offsetX: 0, offsetY: 0, width: canvasWidth, height: canvasHeight };
         
-        // FIX: Ensure gears NEVER render on elevations
         if (!isElevation) renderGearIcons(floorData, clientCanvas.bgMetrics);
         return;
     }
@@ -286,7 +264,6 @@ function renderClientCanvas(floorData) {
         });
 
         renderActiveOverlays(floorData, clientCanvas.bgMetrics).then(() => {
-            // FIX: Ensure gears NEVER render on elevations
             if (!isElevation) renderGearIcons(floorData, clientCanvas.bgMetrics);
         });
     };
@@ -296,7 +273,6 @@ function renderClientCanvas(floorData) {
     image.src = imageUrl;
 }
 
-// --- NEW FUNCTION: Smart Layer Updating ---
 async function diffAndRenderCanvas(floorData, bgMetrics) {
     const isElevation = floorData.Name.toLowerCase().includes('elevation') || floorData.Name.toLowerCase().includes('exterior');
     const optionSets = db.OptionSet.filter(os => os.BelongsToFloor === floorData.id);
@@ -309,14 +285,12 @@ async function diffAndRenderCanvas(floorData, bgMetrics) {
     const intendedOverlayIds = optionsToDraw.map(o => o.id);
     const currentObjects = clientCanvas.getObjects();
     
-    // 1. Remove overlays that are NO LONGER selected
     currentObjects.forEach(obj => {
         if (obj.data && obj.data.isOverlay) {
             if (!intendedOverlayIds.includes(obj.data.optionId)) clientCanvas.remove(obj);
         }
     });
     
-    // 2. Add NEW overlays that were just selected
     const existingOverlayIds = clientCanvas.getObjects().filter(o => o.data && o.data.isOverlay).map(o => o.data.optionId);
     
     for (const option of optionsToDraw) {
@@ -335,7 +309,6 @@ async function diffAndRenderCanvas(floorData, bgMetrics) {
                         scaleY = bgMetrics.height / (img.height || 1);
                     }
 
-                    // TAG IT: We attach the ID and layerOrder so we can track it
                     img.set({
                         left: left, top: top, scaleX: scaleX, scaleY: scaleY,
                         selectable: false, evented: false,
@@ -348,14 +321,12 @@ async function diffAndRenderCanvas(floorData, bgMetrics) {
         }
     }
     
-    // 3. Keep the visual layers perfectly sorted
     clientCanvas._objects.sort((a, b) => {
         const orderA = a.data?.layerOrder ?? 0;
         const orderB = b.data?.layerOrder ?? 0;
         return orderA - orderB;
     });
 
-    // 4. Quickly redraw the gears so they reflect prerequisite changes and stay on top
     clientCanvas.getObjects().forEach(obj => {
         if (obj.data && obj.data.isGear) clientCanvas.remove(obj);
     });
@@ -393,7 +364,6 @@ async function renderActiveOverlays(floorData, bgMetrics) {
                     scaleY = bgMetrics.height / (img.height || 1);
                 }
 
-                // TAG IT: Initial load tags the objects for future diffing
                 img.set({
                     left: left, top: top, scaleX: scaleX, scaleY: scaleY,
                     selectable: false, evented: false,
@@ -406,7 +376,6 @@ async function renderActiveOverlays(floorData, bgMetrics) {
     }
 }
 
-// Helper to guarantee math matches perfectly when stacking gears
 const getGearKey = (x, y) => `${Number(x).toFixed(4)},${Number(y).toFixed(4)}`;
 
 function renderGearIcons(floorData, bgMetrics) {
@@ -416,13 +385,11 @@ function renderGearIcons(floorData, bgMetrics) {
     const allSelectedIds = Object.values(state.customizerSelections).flat();
     const gearMap = new Map();
 
-    // 1. Map Set-Level Gears
     floorSets.filter(os => (!os.icon_mode || os.icon_mode === 'set_level') && os.Gear_X !== null).forEach(os => {
         const key = getGearKey(os.Gear_X, os.Gear_Y);
-        if (!gearMap.has(key)) gearMap.set(key, { x: os.Gear_X, y: os.Gear_Y }); // Store raw coordinates
+        if (!gearMap.has(key)) gearMap.set(key, { x: os.Gear_X, y: os.Gear_Y }); 
     });
 
-    // 2. Map Option-Level Gears (with prerequisites check)
     const floorOptions = db.Option.filter(o => floorSets.map(s => s.id).includes(o.BelongsToOptionSet) && o.Gear_X !== null);
     
     floorOptions.forEach(opt => {
@@ -437,7 +404,6 @@ function renderGearIcons(floorData, bgMetrics) {
         }
     });
 
-    // Render one gear per unique coordinate
     gearMap.forEach((coords, keyString) => {
         fabric.Image.fromURL(gearIconUrl, (img) => {
             const left = bgMetrics.offsetX + (coords.x / 100) * bgMetrics.width - (img.width/2);
@@ -452,26 +418,18 @@ function renderGearIcons(floorData, bgMetrics) {
             
             animateGear(img);
             
-            // Pass the exact coordinate string to the sidebar opener
             img.on('mousedown', () => openSidebarMenu(keyString));
             clientCanvas.add(img);
         });
     });
 }
 
-// --- CANVAS SNAPSHOT LOGIC ---
-// --- CANVAS SNAPSHOT LOGIC ---
-// --- CANVAS SNAPSHOT LOGIC ---
 function captureCanvasSnapshot() {
     if (!clientCanvas || !clientCanvas.bgMetrics) return null;
 
-    // 1. Save their current zoom & pan so we don't disrupt their view
     const originalVpt = clientCanvas.viewportTransform.slice();
-    
-    // 2. Reset zoom/pan to default so our coordinates calculate perfectly
     clientCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
 
-    // 3. Find and hide gears (and any placeholder text)
     const gears = clientCanvas.getObjects().filter(o => o.data && o.data.isGear);
     const texts = clientCanvas.getObjects().filter(o => o.type === 'text');
     
@@ -479,13 +437,11 @@ function captureCanvasSnapshot() {
     texts.forEach(t => t.set({ opacity: 0 }));
     clientCanvas.renderAll();
 
-    // 4. FIX: Set the initial crop box to the exact size of the Base Floor Plan
     let minX = clientCanvas.bgMetrics.offsetX;
     let minY = clientCanvas.bgMetrics.offsetY;
     let maxX = minX + clientCanvas.bgMetrics.width;
     let maxY = minY + clientCanvas.bgMetrics.height;
     
-    // 5. Expand the crop box ONLY if an overlay stretches beyond the base plan
     const visibleObjects = clientCanvas.getObjects().filter(o => o.opacity !== 0 && o.data && o.data.isOverlay);
     visibleObjects.forEach(obj => {
         const bound = obj.getBoundingRect();
@@ -497,17 +453,15 @@ function captureCanvasSnapshot() {
 
     const padding = 10;
 
-    // 6. Take a high-res snapshot cropped to our new, guaranteed-to-fit box
     const dataUrl = clientCanvas.toDataURL({ 
         format: 'png', 
         left: minX - padding,
         top: minY - padding,
         width: (maxX - minX) + (padding * 2),
         height: (maxY - minY) + (padding * 2),
-        multiplier: 2 // Keeps it crisp for the PDF
+        multiplier: 2 
     });
 
-    // 7. Restore the gears, text, and the user's zoom/pan state
     gears.forEach(g => g.set({ opacity: 1 }));
     texts.forEach(t => t.set({ opacity: 1 }));
     clientCanvas.setViewportTransform(originalVpt);
@@ -517,7 +471,6 @@ function captureCanvasSnapshot() {
 }
 
 function animateGear(img) {
-    // Simple pulse effect so the user knows it is interactive
     img.animate('opacity', 0.6, {
         duration: 1000,
         onChange: clientCanvas.renderAll.bind(clientCanvas),
@@ -533,152 +486,286 @@ function animateGear(img) {
 
 function openSidebarMenu(context) {
     currentActiveSidebarContext = context;
-    
     let targets = [];
     const allSelectedIds = Object.values(state.customizerSelections).flat();
+    const floorData = wizardSteps[currentStepIndex];
+    const isElevation = floorData.Name.toLowerCase().includes('elevation') || floorData.Name.toLowerCase().includes('exterior');
+
+    hide('sidebarDefaultMessage');
 
     if (Array.isArray(context)) {
         targets = context;
     } else if (typeof context === 'string') {
-        const floorData = wizardSteps[currentStepIndex];
         const floorSets = db.OptionSet.filter(os => os.BelongsToFloor === floorData.id);
-
         floorSets.filter(os => (!os.icon_mode || os.icon_mode === 'set_level') && os.Gear_X !== null).forEach(os => {
-            if (getGearKey(os.Gear_X, os.Gear_Y) === context) {
-                targets.push({ id: os.id, type: 'OptionSet' });
-            }
+            if (getGearKey(os.Gear_X, os.Gear_Y) === context) targets.push({ id: os.id, type: 'OptionSet' });
         });
-
         const floorOptions = db.Option.filter(o => floorSets.map(s => s.id).includes(o.BelongsToOptionSet) && o.Gear_X !== null);
         floorOptions.forEach(opt => {
-            if (opt.requirements && opt.requirements.length > 0) {
-                const hasRequirement = opt.requirements.some(reqId => allSelectedIds.includes(reqId));
-                if (!hasRequirement) return; 
-            }
+            if (opt.requirements?.length > 0 && !opt.requirements.some(reqId => allSelectedIds.includes(reqId))) return;
             const parentSet = floorSets.find(s => s.id === opt.BelongsToOptionSet);
-            if (parentSet && parentSet.icon_mode === 'option_level') {
-                if (getGearKey(opt.Gear_X, opt.Gear_Y) === context) {
-                    targets.push({ id: opt.id, type: 'Option' });
-                }
-            }
+            if (parentSet?.icon_mode === 'option_level' && getGearKey(opt.Gear_X, opt.Gear_Y) === context) targets.push({ id: opt.id, type: 'Option' });
         });
     }
 
     if (targets.length === 0) return;
 
-    hide('sidebarDefaultMessage');
     const container = getEl('customizerOptionSets');
-    container.innerHTML = '';
-    
+    container.innerHTML = ''; 
     const renderData = {}; 
 
     targets.forEach(target => {
+        const optRef = target.type === 'Option' ? db.Option.find(o => o.id === target.id) : null;
+        const set = target.type === 'OptionSet' ? db.OptionSet.find(s => s.id === target.id) : (optRef ? db.OptionSet.find(s => s.id === optRef.BelongsToOptionSet) : null);
+        if (!set) return;
+        if (!renderData[set.id]) renderData[set.id] = { set, options: [] };
         if (target.type === 'OptionSet') {
-            const set = db.OptionSet.find(s => s.id === target.id);
-            if (!set) return;
-            if (!renderData[set.id]) renderData[set.id] = { set, options: [] };
-            
-            const allOpts = db.Option.filter(o => o.BelongsToOptionSet === set.id).sort((a,b) => a.position - b.position);
-            allOpts.forEach(o => {
-                if (!renderData[set.id].options.some(existing => existing.id === o.id)) {
-                    renderData[set.id].options.push(o);
-                }
+            db.Option.filter(o => o.BelongsToOptionSet === set.id).sort((a,b) => a.position - b.position).forEach(o => {
+                if (!renderData[set.id].options.some(ex => ex.id === o.id)) renderData[set.id].options.push(o);
             });
-        } else if (target.type === 'Option') {
-            const opt = db.Option.find(o => o.id === target.id);
-            if (!opt) return;
-            const set = db.OptionSet.find(s => s.id === opt.BelongsToOptionSet);
-            if (!set) return;
-
-            if (!renderData[set.id]) renderData[set.id] = { set, options: [] };
-            if (!renderData[set.id].options.some(existing => existing.id === opt.id)) {
-                renderData[set.id].options.push(opt);
-            }
+        } else if (optRef && !renderData[set.id].options.some(ex => ex.id === optRef.id)) {
+            renderData[set.id].options.push(optRef);
         }
     });
 
-    const sortedSetIds = Object.keys(renderData).sort((a,b) => renderData[a].set.position - renderData[b].set.position);
-
-    sortedSetIds.forEach(setId => {
+    Object.keys(renderData).forEach(setId => {
         const { set, options } = renderData[setId];
         
         const header = document.createElement('h3');
-        header.textContent = options.length === 1 && targets.length === 1 && targets[0].type === 'Option' 
-            ? 'Customize Upgrade' 
-            : `Customize: ${set.Name}`;
-            
-        header.style.marginBottom = '15px';
-        header.style.color = 'var(--primary-color)';
-        header.style.borderBottom = '1px solid var(--border-color)';
-        header.style.paddingBottom = '5px';
+        header.style.cssText = `margin: 20px 0 10px; color: var(--primary-color); border-bottom: 2px solid #eee; padding-bottom: 5px; font-size: 1.1rem;`;
+        header.textContent = set.Name;
         container.appendChild(header);
-
+        
         const grid = document.createElement('div');
-        grid.style.display = 'grid';
-        grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
-        grid.style.gap = '15px';
-        grid.style.marginBottom = '30px';
+        grid.style.cssText = `display: grid; grid-template-columns: ${isElevation ? '1fr 1fr' : '1fr'}; gap: 15px; margin-bottom: 30px;`;
 
         options.forEach(opt => {
-            let currentSelection = state.customizerSelections[set.id] || [];
-            if (!Array.isArray(currentSelection)) currentSelection = [currentSelection];
-            const isSelected = currentSelection.includes(opt.id);
-
+            const isSelected = (state.customizerSelections[set.id] || []).includes(opt.id);
             const card = document.createElement('div');
-            card.className = `option-thumbnail-item ${isSelected ? 'selected' : ''}`;
-            card.style.border = isSelected ? '2px solid var(--primary-color)' : '1px solid var(--border-color)';
-            card.style.boxShadow = isSelected ? '0 0 0 2px var(--primary-color)' : 'none';
-            card.style.borderRadius = '6px';
-            card.style.cursor = 'pointer';
-            card.style.overflow = 'hidden';
-            card.style.backgroundColor = '#fff';
+            
+            let hasValidGallery = false;
+            try {
+                let parsed = typeof opt.gallery_images === 'string' ? JSON.parse(opt.gallery_images) : opt.gallery_images;
+                if (typeof parsed === 'string') parsed = JSON.parse(parsed); 
+                if (Array.isArray(parsed) && parsed.length > 0 && parsed.some(img => {
+                    const url = img.url || img.Url || img.URL || img.image;
+                    return url && url.trim() !== '';
+                })) {
+                    hasValidGallery = true;
+                }
+            } catch(e) {}
 
-            // Fixed Proportions: Image gets 150px height, text is compressed to the bottom
+            const imgHeight = isElevation ? '200px' : '220px';
+
+            card.style.cssText = `border: ${isSelected ? '2px solid var(--primary-color)' : '1px solid #ddd'}; border-radius: 8px; overflow: hidden; background: #fff; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.05);`;
+
             card.innerHTML = `
-                <div style="height: 150px; display: flex; align-items: center; justify-content: center; background: #fdfdfd; border-bottom: 1px solid var(--border-color);">
-                    <img src="${opt.Thumbnail}" alt="${opt.Name}" style="max-width: 100%; max-height: 100%; object-fit: contain; padding: 5px; display: block;">
+                ${(!isElevation && hasValidGallery) ? '<div style="position:absolute; top:8px; left:8px; background:rgba(255,255,255,0.9); padding:4px 8px; border-radius:20px; font-size:10px; font-weight:bold; color:var(--primary-color); z-index:2; border:1px solid #eee;"><span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle; margin-right:4px;">photo_camera</span>Styles</div>' : ''}
+                <div style="height: ${imgHeight}; background: #fdfdfd; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid #eee;">
+                    <img src="${opt.Thumbnail}" style="max-width: 90%; max-height: 90%; object-fit: contain;">
                 </div>
-                <div style="padding: 8px 5px; font-size: 0.8rem; font-family: var(--font-heading); text-align: center; color: var(--headings-dark); font-weight: bold; line-height: 1.2;">
-                    ${opt.Name}
+                <div style="padding: 12px; text-align: ${isElevation ? 'center' : 'left'};">
+                    <div style="font-weight: bold; color: var(--headings-dark); font-size: ${isElevation ? '0.8rem' : '1.1rem'};">${opt.Name}</div>
+                    <div id="btn-container-${opt.id}" style="margin-top: 10px; display: flex; gap: 8px;"></div>
                 </div>
             `;
 
-            card.addEventListener('click', () => handleOptionClick(opt, set));
+            if (isElevation) {
+                card.onclick = () => handleOptionClick(opt, set);
+            } else {
+                const btnContainer = card.querySelector(`#btn-container-${opt.id}`);
+                const addBtn = document.createElement('button');
+                addBtn.textContent = isSelected ? 'Remove' : 'Add to Plan';
+                addBtn.style.cssText = `flex: 1; padding: 10px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; background: ${isSelected ? '#f44336' : 'var(--primary-color)'}; color: white; font-size: 0.8rem;`;
+                addBtn.onclick = (e) => { e.stopPropagation(); handleOptionClick(opt, set); };
+                btnContainer.appendChild(addBtn);
+
+                if (hasValidGallery) {
+                    const galBtn = document.createElement('button');
+                    galBtn.textContent = 'Explore Styles';
+                    galBtn.style.cssText = `flex: 1; padding: 10px; border-radius: 6px; border: 1px solid var(--primary-color); background: white; color: var(--primary-color); font-weight: bold; cursor: pointer; font-size: 0.8rem;`;
+                    galBtn.onclick = (e) => { e.stopPropagation(); openGalleryModal(opt, set); };
+                    btnContainer.appendChild(galBtn);
+                }
+            }
             grid.appendChild(card);
         });
         container.appendChild(grid);
     });
-
     show('customizerOptionSets');
 }
 
-function handleOptionClick(option, optionSet) {
-    let currentSelection = state.customizerSelections[optionSet.id] || [];
-    if (!Array.isArray(currentSelection)) currentSelection = [currentSelection];
+function handleOptionClick(opt, set) {
+    const floorData = wizardSteps[currentStepIndex];
+    const isElevation = floorData.Name.toLowerCase().includes('elevation') || floorData.Name.toLowerCase().includes('exterior');
 
-    const isCurrentlySelected = currentSelection.includes(option.id);
+    if (!state.customizerSelections[set.id]) state.customizerSelections[set.id] = [];
+    const isSelected = state.customizerSelections[set.id].includes(opt.id);
 
-    if (isCurrentlySelected) {
-        if (optionSet.allow_multiple_selections) {
-            state.customizerSelections[optionSet.id] = currentSelection.filter(id => id !== option.id);
-        } else {
-            state.customizerSelections[optionSet.id] = [];
+    if (isElevation) {
+        if (!isSelected) {
+            const floorSets = db.OptionSet.filter(os => os.BelongsToFloor === floorData.id);
+            floorSets.forEach(fs => { state.customizerSelections[fs.id] = []; });
+            state.customizerSelections[set.id] = [opt.id];
         }
     } else {
-        if (optionSet.allow_multiple_selections) {
-            if (!currentSelection.includes(option.id)) currentSelection.push(option.id);
-            state.customizerSelections[optionSet.id] = currentSelection;
+        const allowMultiple = set.allow_multiple_selections === true;
+
+        if (isSelected) {
+            state.customizerSelections[set.id] = state.customizerSelections[set.id].filter(id => id !== opt.id);
+            if (state.customizerSelections['gallery_picks']) delete state.customizerSelections['gallery_picks'][opt.id];
         } else {
-            state.customizerSelections[optionSet.id] = [option.id];
+            if (!allowMultiple) {
+                state.customizerSelections[set.id].forEach(existingId => {
+                    if (state.customizerSelections['gallery_picks']) delete state.customizerSelections['gallery_picks'][existingId];
+                });
+                state.customizerSelections[set.id] = [opt.id]; 
+            } else {
+                state.customizerSelections[set.id].push(opt.id); 
+            }
         }
     }
 
-    const currentStepData = wizardSteps[currentStepIndex];
-    renderClientCanvas(currentStepData);
-
-    // Refresh the sidebar maintaining the same grouped targets!
+    renderClientCanvas(floorData); 
     openSidebarMenu(currentActiveSidebarContext);
 }
+
+// --- GALLERY MODAL & LIGHTBOX ---
+
+window.galleryLightboxImages = [];
+window.galleryLightboxIndex = 0;
+
+function openGalleryModal(opt, set) {
+    let images = [];
+    try {
+        let parsed = typeof opt.gallery_images === 'string' ? JSON.parse(opt.gallery_images) : opt.gallery_images;
+        if (typeof parsed === 'string') parsed = JSON.parse(parsed); 
+        images = parsed || [];
+    } catch(e) { 
+        console.error("Gallery Parse Error", e); 
+        return; 
+    }
+
+    const packages = {};
+    images.forEach(img => {
+        const imgUrl = img.url || img.Url || img.URL || img.image; 
+        if (imgUrl && imgUrl.trim() !== '') {
+            const groupName = img.group || img.Group || img.PackageName || 'Standard Style';
+            if (!packages[groupName]) packages[groupName] = [];
+            packages[groupName].push(imgUrl);
+        }
+    });
+
+    if (Object.keys(packages).length === 0) {
+        alert("No style images are currently configured for this option.");
+        return;
+    }
+
+    getEl('modalTitle').innerHTML = `Style Gallery: ${opt.Name} <span id="closeGalBtn" style="float:right; cursor:pointer; font-size:24px; line-height:1;">&times;</span>`;
+    setTimeout(() => { 
+        const closeBtn = getEl('closeGalBtn');
+        if(closeBtn) closeBtn.onclick = () => hide('modal'); 
+    }, 50);
+
+    window.galleryLightboxImages = []; 
+    let html = `<div style="max-height: 70vh; overflow-y: auto; padding: 5px;">`;
+
+    Object.keys(packages).forEach(groupName => {
+        const pkgPhotos = packages[groupName];
+        const isPkgSelected = state.customizerSelections['gallery_picks']?.[opt.id] === groupName;
+        const isLayoutActive = (state.customizerSelections[set.id] || []).includes(opt.id);
+        const displayAsSelected = isPkgSelected && isLayoutActive;
+
+        html += `
+            <div style="margin-bottom: 30px; border: 2px solid ${displayAsSelected ? 'var(--primary-color)' : '#eee'}; padding: 15px; border-radius: 12px; background: ${displayAsSelected ? '#fff9f4' : '#fff'};">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h4 style="margin: 0; color: var(--headings-dark); font-family: var(--font-heading);">${groupName}</h4>
+                    <button onclick="selectGalleryPackage('${opt.id}', '${set.id}', '${groupName}')" 
+                            style="padding: 10px 20px; border-radius: 6px; border: none; background: var(--primary-color); color: white; font-weight: bold; cursor: pointer;">
+                        ${displayAsSelected ? '✓ Selected' : (isLayoutActive ? 'Choose Style' : 'Select Layout & Style')}
+                    </button>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px;">
+        `;
+
+        pkgPhotos.forEach(url => {
+            const globalIdx = window.galleryLightboxImages.length;
+            window.galleryLightboxImages.push(url);
+            html += `<img src="${url}" onclick="openLightbox(${globalIdx})" style="width: 100%; height: 120px; object-fit: cover; border-radius: 6px; border: 1px solid #eee; cursor: zoom-in;">`;
+        });
+
+        html += `</div></div>`;
+    });
+
+    html += `</div>`;
+    
+    if(!getEl('lightboxOverlay')) {
+        const lb = document.createElement('div');
+        lb.id = 'lightboxOverlay';
+        lb.style.cssText = 'display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:10000; align-items:center; justify-content:center;';
+        lb.innerHTML = `
+            <span onclick="closeLightbox()" style="position:absolute; top:20px; right:30px; color:white; font-size:40px; cursor:pointer;">&times;</span>
+            <button onclick="prevLightbox(event)" style="position:absolute; left:20px; background:none; border:none; color:white; font-size:50px; cursor:pointer;">&#10094;</button>
+            <img id="lightboxImg" style="max-width:90%; max-height:90%; object-fit:contain;">
+            <button onclick="nextLightbox(event)" style="position:absolute; right:20px; background:none; border:none; color:white; font-size:50px; cursor:pointer;">&#10095;</button>
+        `;
+        document.body.appendChild(lb);
+    }
+
+    getEl('modalForm').innerHTML = html;
+    const saveBtn = getEl('modalSave');
+    saveBtn.textContent = 'Finish Selection';
+    saveBtn.onclick = () => hide('modal');
+    getEl('modalCancel').style.display = 'none';
+    show('modal');
+}
+
+window.selectGalleryPackage = function(optId, setId, groupName) {
+    const floorData = wizardSteps[currentStepIndex];
+    const set = db.OptionSet.find(s => s.id == setId);
+    const allowMultiple = set && set.allow_multiple_selections === true;
+
+    if (!state.customizerSelections[setId]) state.customizerSelections[setId] = [];
+    
+    if (!allowMultiple) {
+        state.customizerSelections[setId].forEach(existingId => {
+            if (existingId != optId && state.customizerSelections['gallery_picks']) {
+                delete state.customizerSelections['gallery_picks'][existingId];
+            }
+        });
+        state.customizerSelections[setId] = [parseInt(optId)]; 
+    } else {
+        if (!state.customizerSelections[setId].includes(parseInt(optId))) {
+            state.customizerSelections[setId].push(parseInt(optId)); 
+        }
+    }
+    
+    if (!state.customizerSelections['gallery_picks']) state.customizerSelections['gallery_picks'] = {};
+    state.customizerSelections['gallery_picks'][optId] = groupName;
+
+    renderClientCanvas(floorData); 
+    hide('modal');
+    openSidebarMenu(currentActiveSidebarContext);
+};
+
+window.openLightbox = function(index) {
+    window.galleryLightboxIndex = index;
+    getEl('lightboxImg').src = window.galleryLightboxImages[index];
+    getEl('lightboxOverlay').style.display = 'flex';
+};
+window.closeLightbox = function() { getEl('lightboxOverlay').style.display = 'none'; };
+window.nextLightbox = function(e) { 
+    e.stopPropagation(); 
+    window.galleryLightboxIndex = (window.galleryLightboxIndex + 1) % window.galleryLightboxImages.length; 
+    getEl('lightboxImg').src = window.galleryLightboxImages[window.galleryLightboxIndex]; 
+};
+window.prevLightbox = function(e) { 
+    e.stopPropagation(); 
+    window.galleryLightboxIndex = (window.galleryLightboxIndex - 1 + window.galleryLightboxImages.length) % window.galleryLightboxImages.length; 
+    getEl('lightboxImg').src = window.galleryLightboxImages[window.galleryLightboxIndex]; 
+};
+
+// --- REVIEW AND PDF LOGIC ---
 
 function renderReviewPage() {
     const container = getEl('reviewContent');
@@ -720,7 +807,6 @@ function renderReviewPage() {
                         hasFloorSelections = true;
                         hasAnySelections = true;
                         
-                        // Fixed Proportions for Review Page
                         floorHtml += `
                             <div class="review-card" style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
                                 <div style="height: 180px; display: flex; align-items: center; justify-content: center; background: #fdfdfd; border-bottom: 1px solid var(--border-color);">
@@ -760,8 +846,6 @@ function renderReviewPage() {
     }
 }
 
-// --- PDF GENERATION LOGIC ---
-// --- HELPER TO LOAD IMAGES FOR PDF ---
 async function getBase64ImageFromUrl(imageUrl) {
     return new Promise((resolve) => {
         const img = new Image();
@@ -779,9 +863,6 @@ async function getBase64ImageFromUrl(imageUrl) {
     });
 }
 
-// --- NEW PDF GENERATION LOGIC ---
-// --- NEW PDF GENERATION LOGIC ---
-// --- PDF & MODAL LOGIC ---
 function openLeadCaptureModal() {
     getEl('modalTitle').textContent = 'Where should we send your brochure?';
     getEl('modalForm').innerHTML = `
@@ -797,13 +878,11 @@ function openLeadCaptureModal() {
     saveBtn.textContent = 'Download Brochure';
     saveBtn.classList.remove('hidden');
     
-    // Clear old listeners by replacing the button
     const newSaveBtn = saveBtn.cloneNode(true);
     saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
     
     getEl('modalCancel').onclick = () => hide('modal');
     
-    // VALIDATION AND SAVING LOGIC
     newSaveBtn.addEventListener('click', async () => {
         const nameInput = getEl('pdfClientName');
         const emailInput = getEl('pdfClientEmail');
@@ -813,23 +892,19 @@ function openLeadCaptureModal() {
         const email = emailInput.value.trim();
         const phone = phoneInput.value.trim();
 
-        // 1. Validation: Block empty submissions and highlight red
         if (!name || !email) {
             alert("Please provide your Name and Email to download your custom brochure.");
             nameInput.style.borderColor = name ? '#ccc' : 'red';
             emailInput.style.borderColor = email ? '#ccc' : 'red';
-            return; // Stops the function right here!
+            return; 
         }
 
-        // Reset borders if they fixed the errors
         nameInput.style.borderColor = '#ccc';
         emailInput.style.borderColor = '#ccc';
 
-        // 2. Visual feedback
         newSaveBtn.textContent = 'Preparing PDF...';
         newSaveBtn.disabled = true;
 
-        // 3. Save to Supabase
         try {
             const currentModel = db.ModelHome.find(m => m.id === state.currentModelHomeId);
             const modelName = currentModel ? currentModel.Name : 'Custom Home';
@@ -844,7 +919,6 @@ function openLeadCaptureModal() {
 
             if (error) throw error;
 
-            // 4. Success! Hide modal and generate PDF
             hide('modal');
             generatePDFBrochure();
 
@@ -860,7 +934,6 @@ function openLeadCaptureModal() {
 }
 
 async function generatePDFBrochure() {
-    // We already changed the button in HTML, but we'll disable it while it loads
     const btn = getEl('exportBrochureBtn');
     const originalText = btn.textContent;
     btn.textContent = 'Preparing PDF...';
@@ -874,29 +947,19 @@ async function generatePDFBrochure() {
         
         const currentModel = db.ModelHome.find(m => m.id === state.currentModelHomeId);
         const modelName = currentModel ? currentModel.Name : 'Custom Home';
-        
-        // Grab inputs from the Modal
         const clientName = getEl('pdfClientName') ? getEl('pdfClientName').value.trim() : '';
         const clientEmail = getEl('pdfClientEmail') ? getEl('pdfClientEmail').value.trim() : '';
         const clientPhone = getEl('pdfClientPhone') ? getEl('pdfClientPhone').value.trim() : '';
         const dateString = new Date().toLocaleDateString();
 
-        // PAGE 1: COVER PAGE
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(28);
-        doc.setTextColor(30, 30, 30);
+        // COVER PAGE
+        doc.setFont('helvetica', 'bold').setFontSize(28).setTextColor(30, 30, 30);
         doc.text('Elevate Design + Build', pageWidth / 2, 80, { align: 'center' });
-        
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(18);
-        doc.setTextColor(236, 141, 68); 
+        doc.setFont('helvetica', 'normal').setFontSize(18).setTextColor(236, 141, 68); 
         doc.text(`Model: ${modelName}`, pageWidth / 2, 100, { align: 'center' });
+        doc.setDrawColor(200, 200, 200).line(40, 110, pageWidth - 40, 110);
 
-        doc.setDrawColor(200, 200, 200);
-        doc.line(40, 110, pageWidth - 40, 110);
-
-        doc.setFontSize(14);
-        doc.setTextColor(100, 100, 100);
+        doc.setFontSize(14).setTextColor(100, 100, 100);
         let currentY = 130;
         if (clientName) { doc.text(`Prepared for: ${clientName}`, pageWidth / 2, currentY, { align: 'center' }); currentY += 10; }
         if (clientEmail) { doc.text(clientEmail, pageWidth / 2, currentY, { align: 'center' }); currentY += 10; }
@@ -905,7 +968,7 @@ async function generatePDFBrochure() {
         currentY += 5;
         doc.text(`Date: ${dateString}`, pageWidth / 2, currentY, { align: 'center' });
 
-        // LOOP THROUGH FLOORS 
+        // FLOORS
         for (const floor of wizardSteps.filter(step => !step.isReview)) {
             const isElevation = floor.Name.toLowerCase().includes('elevation') || floor.Name.toLowerCase().includes('exterior');
             const snapshotUrl = state.floorSnapshots && state.floorSnapshots[floor.id];
@@ -914,73 +977,50 @@ async function generatePDFBrochure() {
             let selectedOptions = [];
             floorSets.forEach(set => {
                 const selectedIds = state.customizerSelections[set.id] || [];
-                const idsArray = Array.isArray(selectedIds) ? selectedIds : [selectedIds];
-                idsArray.forEach(optId => {
+                (Array.isArray(selectedIds) ? selectedIds : [selectedIds]).forEach(optId => {
                     const opt = db.Option.find(o => o.id === optId);
                     if (opt) selectedOptions.push({ set, opt });
                 });
             });
 
-            // MAIN RENDER PAGE
+            // RENDER PAGE
             if (snapshotUrl || selectedOptions.length > 0) {
                 doc.addPage();
-                
-                doc.setFont('helvetica', 'bold');
-                doc.setFontSize(20);
-                doc.setTextColor(236, 141, 68);
+                doc.setFont('helvetica', 'bold').setFontSize(20).setTextColor(236, 141, 68);
                 doc.text(floor.Name, 20, 25);
-                doc.setDrawColor(200, 200, 200);
-                doc.line(20, 30, pageWidth - 20, 30);
+                doc.setDrawColor(200, 200, 200).line(20, 30, pageWidth - 20, 30);
 
                 let pdfImgHeight = 0;
-
                 if (snapshotUrl) {
                     const imgProps = doc.getImageProperties(snapshotUrl);
                     const pdfImgWidth = pageWidth - 40; 
                     pdfImgHeight = (imgProps.height * pdfImgWidth) / imgProps.width;
                     doc.addImage(snapshotUrl, 'PNG', 20, 40, pdfImgWidth, pdfImgHeight);
-                } else {
-                    doc.setFontSize(12);
-                    doc.setTextColor(150, 150, 150);
-                    doc.text('No render available.', 20, 50);
                 }
 
                 if (isElevation && selectedOptions.length > 0) {
                     const elevOpt = selectedOptions[0]; 
-                    let textY = 40 + pdfImgHeight + 15;
-                    
-                    doc.setFont('helvetica', 'bold');
-                    doc.setFontSize(14);
-                    doc.setTextColor(30, 30, 30);
-                    doc.text(`Selected: ${elevOpt.opt.Name}`, 20, textY);
+                    doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(30, 30, 30);
+                    doc.text(`Selected Elevation: ${elevOpt.opt.Name}`, 20, 40 + pdfImgHeight + 15);
                     
                     if (elevOpt.opt.code) {
-                        doc.setFont('helvetica', 'normal');
-                        doc.setFontSize(11);
-                        doc.setTextColor(100, 100, 100);
-                        doc.text(`Code: ${elevOpt.opt.code}`, 20, textY + 6);
+                        doc.setFont('helvetica', 'normal').setFontSize(11).setTextColor(100, 100, 100);
+                        doc.text(`Plan Code: ${elevOpt.opt.code}`, 20, 40 + pdfImgHeight + 22);
                     }
                     selectedOptions = []; 
                 }
             }
 
-            // SELECTED OPTIONS PAGE
+            // INTERIOR OPTIONS
             if (selectedOptions.length > 0) {
                 doc.addPage();
-                
-                doc.setFont('helvetica', 'bold');
-                doc.setFontSize(20);
-                doc.setTextColor(30, 30, 30);
+                doc.setFont('helvetica', 'bold').setFontSize(20).setTextColor(30, 30, 30);
                 doc.text(`${floor.Name} Upgrades`, 20, 25);
                 doc.line(20, 30, pageWidth - 20, 30);
 
                 let yPos = 40;
-
                 for (const item of selectedOptions) {
-                    if (yPos > pageHeight - 45) {
-                        doc.addPage();
-                        yPos = 20;
-                    }
+                    if (yPos > 240) { doc.addPage(); yPos = 20; }
 
                     let base64Thumb = null;
                     if (item.opt.Thumbnail && item.opt.Thumbnail !== 'null') {
@@ -989,42 +1029,61 @@ async function generatePDFBrochure() {
 
                     if (base64Thumb) {
                         const thumbProps = doc.getImageProperties(base64Thumb);
-                        const thumbWidth = 40; 
+                        const thumbWidth = 30; 
                         const thumbHeight = (thumbProps.height * thumbWidth) / thumbProps.width; 
-                        
                         doc.addImage(base64Thumb, 'PNG', 20, yPos, thumbWidth, thumbHeight);
-                    } else {
-                        doc.setDrawColor(200, 200, 200);
-                        doc.rect(20, yPos, 40, 30);
                     }
 
-                    doc.setFont('helvetica', 'bold');
-                    doc.setFontSize(12);
-                    doc.setTextColor(236, 141, 68); 
-                    doc.text(item.set.Name.toUpperCase(), 65, yPos + 10);
-
-                    doc.setFont('helvetica', 'normal');
-                    doc.setFontSize(14);
-                    doc.setTextColor(30, 30, 30); 
-                    doc.text(item.opt.Name, 65, yPos + 20);
+                    doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(236, 141, 68); 
+                    doc.text(item.set.Name.toUpperCase(), 55, yPos + 10);
+                    
+                    doc.setFont('helvetica', 'normal').setFontSize(14).setTextColor(30, 30, 30); 
+                    doc.text(item.opt.Name, 55, yPos + 18);
 
                     if (item.opt.code) {
-                        doc.setFontSize(10);
-                        doc.setTextColor(120, 120, 120);
-                        doc.text(`Code: ${item.opt.code}`, 65, yPos + 28);
+                        doc.setFont('helvetica', 'italic').setFontSize(10).setTextColor(120, 120, 120);
+                        doc.text(`Code: ${item.opt.code}`, 55, yPos + 24);
                     }
 
-                    yPos += 45; 
+                    yPos += 35; 
+
+                    const galleryPicks = state.customizerSelections['gallery_picks'] || {};
+                    if (galleryPicks[item.opt.id]) {
+                        const pkgName = galleryPicks[item.opt.id];
+                        let images = [];
+                        try {
+                            const raw = typeof item.opt.gallery_images === 'string' ? JSON.parse(item.opt.gallery_images) : item.opt.gallery_images;
+                            
+                            // VETTED FIX: Safely match groups in the PDF exactly like we did in the Modal UI
+                            images = raw.filter(img => {
+                                const gName = img.group || img.Group || img.PackageName || 'Standard Style';
+                                return gName === pkgName;
+                            });
+                        } catch(e) {}
+
+                        for (const imgData of images) {
+                            if (yPos > 220) { doc.addPage(); yPos = 20; }
+                            const imgUrl = imgData.url || imgData.Url || imgData.URL || imgData.image;
+                            const b64 = await getBase64ImageFromUrl(imgUrl);
+                            if (b64) {
+                                doc.addImage(b64, 'PNG', 30, yPos, 80, 50); 
+                                doc.setFont('helvetica', 'italic').setFontSize(10).setTextColor(100,100,100);
+                                doc.text(`Selected Style: ${pkgName}`, 30, yPos + 55);
+                                yPos += 65;
+                            }
+                        }
+                    }
+                    yPos += 5; 
                 }
             }
         }
 
-        const saveName = clientName ? `${clientName.replace(/\s+/g, '_')}_${modelName}_Brochure.pdf` : `${modelName}_Brochure.pdf`;
+        const saveName = clientName ? `${clientName.replace(/\s+/g, '_')}_Brochure.pdf` : `${modelName}_Brochure.pdf`;
         doc.save(saveName);
 
     } catch (err) {
         console.error("PDF generation failed:", err);
-        alert("There was an error generating your PDF. Please ensure your images are loading correctly.");
+        alert("There was an error generating your PDF brochure.");
     } finally {
         btn.textContent = originalText;
         btn.disabled = false;
@@ -1072,8 +1131,12 @@ getEl('reviewBackBtn').addEventListener('click', () => {
     loadWizardStep();
 });
 
-// Hook up the button to open the Modal instead of firing the PDF immediately
+// Close modal when clicking dark background
+window.addEventListener('click', (event) => {
+    if (event.target === getEl('modal')) hide('modal');
+    if (event.target === getEl('lightboxOverlay')) window.closeLightbox();
+});
+
 getEl('exportBrochureBtn').addEventListener('click', openLeadCaptureModal);
 
-// START THE APP
 initializeClientApp();
