@@ -914,6 +914,7 @@ export function renderAdminEditorControls() {
                 showModal('Edit Option Details', [
                     { label: 'Option Name', id: 'Name', value: option.Name },
                     { label: 'Option Code', id: 'code', value: option.code || '' },
+                    { label: 'Description (Optional)', id: 'Description', value: option.Description || '' }, // <--- NEW DESCRIPTION FIELD
                     { label: 'New Thumbnail (Optional)', id: 'Thumbnail', type: 'file', existingValue: option.Thumbnail },
                     { label: 'New Overlay Image (Optional)', id: 'OptionImage', type: 'file', existingValue: option.OptionImage },
                     { label: 'Requirements', id: 'requirements', type: 'checkbox-group', options: allOptions, values: option.requirements },
@@ -1005,6 +1006,7 @@ export function renderAdminEditorControls() {
             showModal('Create New Option', [
                 { label: 'Option Name', id: 'Name' }, 
                 { label: 'Option Code (Optional)', id: 'code' },
+                { label: 'Description (Optional)', id: 'Description' }, // <--- NEW DESCRIPTION FIELD
                 { label: 'Thumbnail Image (4:3 recommended)', id: 'Thumbnail', type: 'file' }, 
                 { label: 'Main Overlay Image', id: 'OptionImage', type: 'file' },
                 { label: 'Requirements (Must have one of these)', id: 'requirements', type: 'checkbox-group', options: allOptions },

@@ -84,6 +84,7 @@ function setupAdminEventListeners() {
         if (e.target.closest('#createModelHomeBtn')) {
             showModal('Create New Model Home', [
                 { label: 'Model Name', id: 'Name' }, 
+                { label: 'Description (Optional)', id: 'Description', type: 'textarea' }, // <--- NEW FIELD
                 { label: 'Cover Image', id: 'CoverImage', type: 'file' }
             ]);
             state.modalSaveCallback = async (formData) => {
@@ -105,6 +106,7 @@ function setupAdminEventListeners() {
         if (button.id === 'manageEditDetailsBtn') {
             showModal('Edit Model Details', [
                 { label: 'Model Name', id: 'Name', value: model.Name }, 
+                { label: 'Description (Optional)', id: 'Description', value: model.Description || '', type: 'textarea' }, // <--- NEW FIELD
                 { label: 'New Cover Image (Optional)', id: 'CoverImage', type: 'file', existingValue: model.CoverImage }
             ]);
             state.modalSaveCallback = async (formData) => {

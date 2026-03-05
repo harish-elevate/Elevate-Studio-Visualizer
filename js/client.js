@@ -32,9 +32,13 @@ function renderLandingPage() {
         const card = document.createElement('a');
         card.className = 'model-home-card';
         card.href = '#';
+        card.style.textDecoration = 'none'; // Keeps text looking clean
+        
+        // Added the description paragraph below the name
         card.innerHTML = `
             <img src="${model.CoverImage}" alt="${model.Name}" class="model-home-card-image">
-            <div class="model-home-card-name">${model.Name}</div>
+            <div class="model-home-card-name" style="margin-bottom: 5px;">${model.Name}</div>
+            ${model.Description ? `<p style="font-size: 0.9rem; color: #666; margin: 0 15px 15px; text-align: center; line-height: 1.4;">${model.Description}</p>` : ''}
         `;
         
         card.addEventListener('click', (e) => {
@@ -607,7 +611,7 @@ function openSidebarMenu(context) {
 
             const imgHeight = isElevation ? '200px' : '220px';
 
-            card.style.cssText = `border: ${isSelected ? '2px solid var(--primary-color)' : '1px solid #ddd'}; border-radius: 8px; overflow: hidden; background: #fff; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.05);`;
+            card.style.cssText = `position: relative; border: ${isSelected ? '2px solid var(--primary-color)' : '1px solid #ddd'}; border-radius: 8px; overflow: hidden; background: #fff; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.05);`;
 
             card.innerHTML = `
                 ${(!isElevation && hasValidGallery) ? '<div style="position:absolute; top:8px; left:8px; background:rgba(255,255,255,0.9); padding:4px 8px; border-radius:20px; font-size:10px; font-weight:bold; color:var(--primary-color); z-index:2; border:1px solid #eee;"><span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle; margin-right:4px;">photo_camera</span>Styles</div>' : ''}
@@ -616,6 +620,9 @@ function openSidebarMenu(context) {
                 </div>
                 <div style="padding: 12px; text-align: ${isElevation ? 'center' : 'left'};">
                     <div style="font-weight: bold; color: var(--headings-dark); font-size: ${isElevation ? '0.8rem' : '1.1rem'};">${opt.Name}</div>
+                    
+                    ${opt.Description ? `<div style="font-size: 0.75rem; color: #777; margin-top: 5px; line-height: 1.3;">${opt.Description}</div>` : ''}
+                    
                     <div id="btn-container-${opt.id}" style="margin-top: 10px; display: flex; gap: 8px;"></div>
                 </div>
             `;
