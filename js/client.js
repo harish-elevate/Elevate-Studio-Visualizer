@@ -1024,12 +1024,51 @@ function openLeadCaptureModal() {
             const currentModel = db.ModelHome.find(m => m.id === state.currentModelHomeId);
             const modelName = currentModel ? currentModel.Name : 'Custom Home';
 
+            // --- BUILD HUMAN-READABLE HTML SELECTIONS ---
+            let formattedSelections = '<ul style="margin:0; padding-left:20px; font-family: Arial, sans-serif; font-size: 14px; color: #333;">';
+            let hasSelections = false;
+
+            Object.keys(state.customizerSelections).forEach(setId => {
+                if (setId === 'gallery_picks') return; // Skip the gallery picks bucket
+                
+                const setRef = db.OptionSet.find(s => s.id == setId);
+                if (!setRef) return;
+
+                const selectedOptIds = state.customizerSelections[setId] || [];
+                const idsArray = Array.isArray(selectedOptIds) ? selectedOptIds : [selectedOptIds];
+                
+                if (idsArray.length > 0) {
+                    hasSelections = true;
+                    formattedSelections += `<li style="margin-bottom: 10px;"><strong>${setRef.Name}:</strong><ul style="margin-top: 4px;">`;
+                    
+                    idsArray.forEach(optId => {
+                        const optRef = db.Option.find(o => o.id == optId);
+                        if (optRef) {
+                            const codeText = optRef.code ? ` <span style="color:#888; font-size:12px;">(${optRef.code})</span>` : '';
+                            const stylePick = state.customizerSelections['gallery_picks']?.[optId];
+                            const styleText = stylePick ? ` <br><em style="color:#ec8d44; font-size:12px;">↳ Style: ${stylePick}</em>` : '';
+                            
+                            formattedSelections += `<li style="margin-bottom: 4px;">${optRef.Name}${codeText}${styleText}</li>`;
+                        }
+                    });
+                    
+                    formattedSelections += `</ul></li>`;
+                }
+            });
+            formattedSelections += '</ul>';
+
+            if (!hasSelections) {
+                formattedSelections = '<p style="color: #666; font-style: italic;">No custom upgrades selected.</p>';
+            }
+            // ---------------------------------------------
+
             const { error } = await supabase.from('Leads').insert([{
                 client_name: name,
                 client_email: email,
                 client_phone: phone,
                 model_name: modelName,
-                selections_json: state.customizerSelections
+                selections_json: state.customizerSelections,
+                selections_text: formattedSelections // Saves the beautiful HTML string!
             }]);
 
             if (error) throw error;
