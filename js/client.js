@@ -150,6 +150,7 @@ function renderClientCanvas(floorData) {
         });
 
         let isDragging = false;
+        let hasMoved = false; // <--- NEW: Tracks if it's a drag or a click
         let lastPosX, lastPosY;
 
         clientCanvas.on('mouse:down', function(opt) {
@@ -157,6 +158,7 @@ function renderClientCanvas(floorData) {
             
             const evt = opt.e;
             isDragging = true;
+            hasMoved = false; // Reset on every click
             clientCanvas.setCursor('grabbing');
             
             if(evt.touches && evt.touches[0]) {
@@ -179,21 +181,37 @@ function renderClientCanvas(floorData) {
                     currX = e.clientX;
                     currY = e.clientY;
                 }
-                const vpt = clientCanvas.viewportTransform;
-                vpt[4] += currX - lastPosX;
-                vpt[5] += currY - lastPosY;
-                clientCanvas.requestRenderAll();
-                lastPosX = currX;
-                lastPosY = currY;
+                
+                // If they moved more than 2 pixels, it's an official drag
+                if (Math.abs(currX - lastPosX) > 2 || Math.abs(currY - lastPosY) > 2) {
+                    hasMoved = true;
+                }
+
+                // Only move the canvas if it's an official drag
+                if (hasMoved) {
+                    const vpt = clientCanvas.viewportTransform;
+                    vpt[4] += currX - lastPosX;
+                    vpt[5] += currY - lastPosY;
+                    clientCanvas.requestRenderAll();
+                    lastPosX = currX;
+                    lastPosY = currY;
+                }
             }
         });
 
-        clientCanvas.on('mouse:up', function() {
+        clientCanvas.on('mouse:up', function(opt) {
             if (isDragging) {
                 clientCanvas.setViewportTransform(clientCanvas.viewportTransform);
                 isDragging = false;
                 clientCanvas.setCursor('grab');
-            }
+                
+                // If they released the mouse but NEVER moved, it was just a click!
+                if (!hasMoved) {
+                    hide('customizerOptionSets');
+                    show('sidebarDefaultMessage');
+                    currentActiveSidebarContext = null;
+                }
+            } 
         });
 
         clientCanvas.on('touch:gesture', function(e) {
@@ -277,6 +295,57 @@ function renderClientCanvas(floorData) {
     image.src = imageUrl;
 }
 
+function getOptionLogicStatus(option) {
+    // 1. Is it already selected?
+    const currentSelections = state.customizerSelections[option.BelongsToOptionSet];
+    const isSelected = Array.isArray(currentSelections) ? currentSelections.includes(option.id) : currentSelections === option.id;
+    if (isSelected) return { status: 'selected' };
+
+    // 2. Does it have an active conflict?
+    let activeConflicts = [];
+    if (option.conflicts && option.conflicts.length > 0) {
+        activeConflicts = option.conflicts.filter(conflictId => {
+            const conflictOpt = db.Option.find(o => o.id === conflictId);
+            if (!conflictOpt) return false;
+            const selectedInSet = state.customizerSelections[conflictOpt.BelongsToOptionSet];
+            return Array.isArray(selectedInSet) ? selectedInSet.includes(conflictId) : selectedInSet === conflictId;
+        });
+    }
+    if (activeConflicts.length > 0) return { status: 'conflict', items: activeConflicts };
+
+    // 3. Is it missing a prerequisite?
+    let missingReqs = [];
+    if (option.requirements && option.requirements.length > 0) {
+        missingReqs = option.requirements.filter(reqId => {
+            const reqOpt = db.Option.find(o => o.id === reqId);
+            if (!reqOpt) return true; 
+            const selectedInSet = state.customizerSelections[reqOpt.BelongsToOptionSet];
+            return Array.isArray(selectedInSet) ? !selectedInSet.includes(reqId) : selectedInSet !== reqId;
+        });
+    }
+    if (missingReqs.length > 0) return { status: 'locked', items: missingReqs };
+
+    // 4. Good to go!
+    return { status: 'available' };
+}
+
+function getCollateralDamage(optId, found = new Set()) {
+    const allSelectedIds = Object.values(state.customizerSelections).flat();
+    
+    allSelectedIds.forEach(selectedId => {
+        if (selectedId === optId || found.has(selectedId)) return;
+        const opt = db.Option.find(o => o.id === selectedId);
+        
+        // If this selected option requires the one we are about to delete
+        if (opt && opt.requirements && opt.requirements.includes(optId)) {
+            found.add(selectedId);
+            getCollateralDamage(selectedId, found); // Check for chains!
+        }
+    });
+    
+    return Array.from(found).map(id => db.Option.find(o => o.id === id));
+}
+
 async function diffAndRenderCanvas(floorData, bgMetrics) {
     const isElevation = floorData.Name.toLowerCase().includes('elevation') || floorData.Name.toLowerCase().includes('exterior');
     const optionSets = db.OptionSet.filter(os => os.BelongsToFloor === floorData.id);
@@ -358,6 +427,152 @@ async function diffAndRenderCanvas(floorData, bgMetrics) {
     }
 }
 
+window.triggerLogicModal = (targetOptId, type, itemIdsString) => {
+    const targetOpt = db.Option.find(o => o.id === targetOptId);
+    const itemIds = itemIdsString.split(',').map(Number);
+    const items = itemIds.map(id => db.Option.find(o => o.id === id));
+
+    getEl('modalTitle').textContent = type === 'req' ? 'Unlock Feature' : 'Conflicting Options';
+
+    const form = getEl('modalForm');
+    const saveBtn = getEl('modalSave');
+    const cancelBtn = getEl('modalCancel');
+
+    // Build beautiful mini-cards for the prerequisites/conflicts
+    const itemsHtml = items.map(i => `
+        <div style="display: flex; align-items: center; gap: 15px; padding: 10px; border: 1px solid #eee; border-radius: 8px; margin-bottom: 10px; background: #fafafa;">
+            <img src="${i.Thumbnail !== 'null' ? i.Thumbnail : ''}" alt="${i.Name}" style="width: 80px; height: 80px; object-fit: contain; background: #fff; border-radius: 4px; border: 1px solid #ddd;">
+            <div>
+                <div style="font-weight: bold; color: var(--headings-dark); font-size: 1rem;">${i.Name}</div>
+                ${i.Description ? `<div style="font-size: 0.8rem; color: #666; margin-top: 4px; line-height: 1.3;">${i.Description}</div>` : ''}
+            </div>
+        </div>
+    `).join('');
+
+    // Inject the content based on whether it's a conflict or a requirement
+    if (type === 'req') {
+         form.innerHTML = `
+            <p style="margin-bottom:15px; line-height:1.5; color:#555; font-size: 0.95rem;">To add <strong>${targetOpt.Name}</strong>, you must also add the following prerequisite(s) to your plan:</p>
+            <div style="margin-bottom: 20px;">${itemsHtml}</div>`;
+    } else {
+         form.innerHTML = `
+            <p style="margin-bottom:15px; line-height:1.5; color:#555; font-size: 0.95rem;">Adding <strong>${targetOpt.Name}</strong> will remove the following conflicting item(s) from your plan:</p>
+            <div style="margin-bottom: 20px;">${itemsHtml}</div>`;
+    }
+
+    // Unhide and setup the Cancel Button
+    cancelBtn.classList.remove('hidden');
+    cancelBtn.style.display = 'inline-block';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.onclick = () => hide('modal');
+
+    // Safely override the Save Button
+    const newSaveBtn = saveBtn.cloneNode(true);
+    saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
+
+    newSaveBtn.classList.remove('hidden');
+    newSaveBtn.style.display = 'inline-block';
+    newSaveBtn.textContent = type === 'req' ? 'Add All to Plan' : 'Swap Options';
+
+    // The Logic Engine for Swaps and Additions
+    newSaveBtn.onclick = () => {
+        const floorData = wizardSteps[currentStepIndex];
+
+        if (type === 'req') {
+            // Add all requirements
+            items.forEach(req => {
+                if (!state.customizerSelections[req.BelongsToOptionSet]) state.customizerSelections[req.BelongsToOptionSet] = [];
+                if (!state.customizerSelections[req.BelongsToOptionSet].includes(req.id)) {
+                     state.customizerSelections[req.BelongsToOptionSet].push(req.id);
+                }
+            });
+        } else {
+            // Remove all conflicts
+            items.forEach(conf => {
+                if (state.customizerSelections[conf.BelongsToOptionSet]) {
+                    state.customizerSelections[conf.BelongsToOptionSet] = state.customizerSelections[conf.BelongsToOptionSet].filter(id => id !== conf.id);
+                    if (state.customizerSelections['gallery_picks']) delete state.customizerSelections['gallery_picks'][conf.id];
+                }
+            });
+        }
+
+        // Add the target option they originally clicked
+        const targetSet = db.OptionSet.find(s => s.id === targetOpt.BelongsToOptionSet);
+        if (!state.customizerSelections[targetSet.id]) state.customizerSelections[targetSet.id] = [];
+        
+        if (!targetSet.allow_multiple_selections) {
+             state.customizerSelections[targetSet.id] = [targetOpt.id];
+        } else {
+             if (!state.customizerSelections[targetSet.id].includes(targetOpt.id)) {
+                 state.customizerSelections[targetSet.id].push(targetOpt.id);
+             }
+        }
+
+        // Redraw canvas and sidebar
+        renderClientCanvas(floorData);
+        openSidebarMenu(currentActiveSidebarContext); 
+        hide('modal');
+    };
+
+    show('modal');
+};
+
+window.triggerCollateralModal = (targetOpt, collateralItems, actionType, set) => {
+    getEl('modalTitle').textContent = 'Warning: Dependent Options';
+    const form = getEl('modalForm');
+    const saveBtn = getEl('modalSave');
+    const cancelBtn = getEl('modalCancel');
+
+    const itemsHtml = collateralItems.map(i => `
+        <div style="display: flex; align-items: center; gap: 15px; padding: 10px; border: 1px solid #eee; border-radius: 8px; margin-bottom: 10px; background: #fafafa;">
+            <img src="${i.Thumbnail !== 'null' ? i.Thumbnail : ''}" alt="${i.Name}" style="width: 80px; height: 80px; object-fit: contain; background: #fff; border-radius: 4px; border: 1px solid #ddd;">
+            <div>
+                <div style="font-weight: bold; color: var(--headings-dark); font-size: 1rem;">${i.Name}</div>
+            </div>
+        </div>
+    `).join('');
+
+    if (actionType === 'remove') {
+        form.innerHTML = `
+            <p style="margin-bottom:15px; line-height:1.5; color:#555; font-size: 0.95rem;">Removing <strong>${targetOpt.Name}</strong> will also remove the following item(s) that depend on it:</p>
+            <div style="margin-bottom: 20px;">${itemsHtml}</div>`;
+    } else if (actionType === 'swap') {
+        form.innerHTML = `
+            <p style="margin-bottom:15px; line-height:1.5; color:#555; font-size: 0.95rem;">Selecting <strong>${targetOpt.Name}</strong> will replace your current selection and remove the following dependent item(s):</p>
+            <div style="margin-bottom: 20px;">${itemsHtml}</div>`;
+    }
+
+    cancelBtn.classList.remove('hidden');
+    cancelBtn.style.display = 'inline-block';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.onclick = () => hide('modal');
+
+    const newSaveBtn = saveBtn.cloneNode(true);
+    saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
+
+    newSaveBtn.classList.remove('hidden');
+    newSaveBtn.style.display = 'inline-block';
+    newSaveBtn.textContent = actionType === 'remove' ? 'Remove All' : 'Continue & Swap';
+    newSaveBtn.style.cssText = `padding: 10px 20px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; color: white; background: #f44336;`;
+
+    newSaveBtn.onclick = () => {
+        // 1. Silently remove all collateral damage first
+        collateralItems.forEach(coll => {
+            const collSet = db.OptionSet.find(s => s.id === coll.BelongsToOptionSet);
+            if (state.customizerSelections[collSet.id]) {
+                state.customizerSelections[collSet.id] = state.customizerSelections[collSet.id].filter(id => id !== coll.id);
+                if (state.customizerSelections['gallery_picks']) delete state.customizerSelections['gallery_picks'][coll.id];
+            }
+        });
+        
+        // 2. Execute the original action (This handles re-rendering the canvas!)
+        handleOptionClick(targetOpt, set);
+        hide('modal');
+    };
+
+    show('modal');
+};
+
 async function renderActiveOverlays(floorData, bgMetrics) {
     const isElevation = floorData.Name.toLowerCase().includes('elevation') || floorData.Name.toLowerCase().includes('exterior');
     const optionSets = db.OptionSet.filter(os => os.BelongsToFloor === floorData.id);
@@ -434,10 +649,7 @@ function renderGearIcons(floorData, bgMetrics) {
     const floorOptions = db.Option.filter(o => floorSets.map(s => s.id).includes(o.BelongsToOptionSet) && o.Gear_X !== null);
     
     floorOptions.forEach(opt => {
-        if (opt.requirements && opt.requirements.length > 0) {
-            const hasRequirement = opt.requirements.some(reqId => allSelectedIds.includes(reqId));
-            if (!hasRequirement) return; 
-        }
+        
         const parentSet = floorSets.find(s => s.id === opt.BelongsToOptionSet);
         if (parentSet && parentSet.icon_mode === 'option_level') {
             const key = getGearKey(opt.Gear_X, opt.Gear_Y);
@@ -556,7 +768,7 @@ function openSidebarMenu(context) {
         });
         const floorOptions = db.Option.filter(o => floorSets.map(s => s.id).includes(o.BelongsToOptionSet) && o.Gear_X !== null);
         floorOptions.forEach(opt => {
-            if (opt.requirements?.length > 0 && !opt.requirements.some(reqId => allSelectedIds.includes(reqId))) return;
+           
             const parentSet = floorSets.find(s => s.id === opt.BelongsToOptionSet);
             if (parentSet?.icon_mode === 'option_level' && getGearKey(opt.Gear_X, opt.Gear_Y) === context) targets.push({ id: opt.id, type: 'Option' });
         });
@@ -631,12 +843,83 @@ function openSidebarMenu(context) {
                 card.onclick = () => handleOptionClick(opt, set);
             } else {
                 const btnContainer = card.querySelector(`#btn-container-${opt.id}`);
-                const addBtn = document.createElement('button');
-                addBtn.textContent = isSelected ? 'Remove' : 'Add to Plan';
-                addBtn.style.cssText = `flex: 1; padding: 10px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; background: ${isSelected ? '#f44336' : 'var(--primary-color)'}; color: white; font-size: 0.8rem;`;
-                addBtn.onclick = (e) => { e.stopPropagation(); handleOptionClick(opt, set); };
-                btnContainer.appendChild(addBtn);
+                
+                // --- SMART BUTTON LOGIC ---
+                const statusObj = getOptionLogicStatus(opt);
+                
+                if (statusObj.status === 'selected') {
+                    const removeBtn = document.createElement('button');
+                    removeBtn.textContent = 'Remove from Plan';
+                    removeBtn.style.cssText = `flex: 1; padding: 10px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; background: #f44336; color: white; font-size: 0.8rem;`;
+                    removeBtn.onclick = (e) => { 
+                        e.stopPropagation(); 
+                        const collateral = getCollateralDamage(opt.id);
+                        if (collateral.length > 0) {
+                            triggerCollateralModal(opt, collateral, 'remove', set);
+                        } else {
+                            handleOptionClick(opt, set); 
+                        }
+                    };
+                    btnContainer.appendChild(removeBtn);
+                } 
+                else if (statusObj.status === 'available') {
+                    const addBtn = document.createElement('button');
+                    addBtn.textContent = 'Add to Plan';
+                    addBtn.style.cssText = `flex: 1; padding: 10px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; background: var(--primary-color); color: white; font-size: 0.8rem;`;
+                    addBtn.onclick = (e) => { 
+                        e.stopPropagation(); 
+                        
+                        // Check if adding this will swap out an existing item that has collateral damage
+                        let collateral = [];
+                        if (!set.allow_multiple_selections) {
+                            const existingIds = state.customizerSelections[set.id] || [];
+                            existingIds.forEach(eid => {
+                                if (eid !== opt.id) {
+                                    collateral.push(...getCollateralDamage(eid));
+                                }
+                            });
+                        }
+                        
+                        if (collateral.length > 0) {
+                            // Deduplicate the list
+                            const uniqueCollateral = [...new Map(collateral.map(item => [item.id, item])).values()];
+                            triggerCollateralModal(opt, uniqueCollateral, 'swap', set);
+                        } else {
+                            handleOptionClick(opt, set); 
+                        }
+                    };
+                    btnContainer.appendChild(addBtn);
+                } 
+                else if (statusObj.status === 'locked') {
+                    const reqNames = statusObj.items.map(id => db.Option.find(o=>o.id===id)?.Name).join(', ');
+                    const lockBtn = document.createElement('button');
+                    lockBtn.innerHTML = `<span class="material-symbols-outlined" style="font-size:16px; vertical-align:middle; margin-right:4px;">lock</span> Add to Plan`;
+                    lockBtn.style.cssText = `flex: 1; padding: 10px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; background: #999; color: white; font-size: 0.8rem;`;
+                    lockBtn.onclick = (e) => { e.stopPropagation(); triggerLogicModal(opt.id, 'req', statusObj.items.join(',')); };
+                    btnContainer.appendChild(lockBtn);
+                    
+                    const warning = document.createElement('div');
+                    warning.style.cssText = `color: #d9534f; font-size: 0.75rem; margin-top: 8px; width: 100%; text-align: center; font-weight: bold;`;
+                    warning.textContent = `* Requires: ${reqNames}`;
+                    btnContainer.parentElement.appendChild(warning);
+                    btnContainer.style.flexWrap = 'wrap'; // Allows warning to drop below buttons
+                } 
+                else if (statusObj.status === 'conflict') {
+                    const confNames = statusObj.items.map(id => db.Option.find(o=>o.id===id)?.Name).join(', ');
+                    const confBtn = document.createElement('button');
+                    confBtn.innerHTML = `<span class="material-symbols-outlined" style="font-size:16px; vertical-align:middle; margin-right:4px;">lock</span> Add to Plan`;
+                    confBtn.style.cssText = `flex: 1; padding: 10px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; background: #999; color: white; font-size: 0.8rem;`;
+                    confBtn.onclick = (e) => { e.stopPropagation(); triggerLogicModal(opt.id, 'conflict', statusObj.items.join(',')); };
+                    btnContainer.appendChild(confBtn);
+                    
+                    const warning = document.createElement('div');
+                    warning.style.cssText = `color: #d9534f; font-size: 0.75rem; margin-top: 8px; width: 100%; text-align: center; font-weight: bold;`;
+                    warning.textContent = `* Cannot use with: ${confNames}`;
+                    btnContainer.parentElement.appendChild(warning);
+                    btnContainer.style.flexWrap = 'wrap';
+                }
 
+                // Add Gallery Button if applicable
                 if (hasValidGallery) {
                     const galBtn = document.createElement('button');
                     galBtn.textContent = 'Explore Styles';
@@ -1292,5 +1575,29 @@ window.addEventListener('click', (event) => {
 });
 
 getEl('exportBrochureBtn').addEventListener('click', openLeadCaptureModal);
+
+// --- ZOOM LOGIC ---
+function handleClientZoom(factor) {
+    if (!clientCanvas) return;
+    let zoom = clientCanvas.getZoom() * factor;
+    if (zoom > 5) zoom = 5;
+    if (zoom < 0.2) zoom = 0.2;
+    // Zoom perfectly into the center of the screen
+    const center = new fabric.Point(clientCanvas.width / 2, clientCanvas.height / 2);
+    clientCanvas.zoomToPoint(center, zoom);
+}
+
+// Safely attach to the buttons (checks if they exist on the page first)
+const zoomInBtn = getEl('zoomInBtn');
+if (zoomInBtn) zoomInBtn.addEventListener('click', () => handleClientZoom(1.2));
+
+const zoomOutBtn = getEl('zoomOutBtn');
+if (zoomOutBtn) zoomOutBtn.addEventListener('click', () => handleClientZoom(0.8));
+
+const zoomResetBtn = getEl('zoomResetBtn');
+if (zoomResetBtn) zoomResetBtn.addEventListener('click', () => {
+    if (!clientCanvas) return;
+    clientCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+});
 
 initializeClientApp();
