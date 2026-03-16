@@ -10,6 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz@9..40&family=Montserrat:wght@600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
@@ -27,10 +28,58 @@
     <main id="app">
         <div id="landingPage">
             <section class="landing-intro">
-                <h2>Create Your Dream Home</h2>
-                <p>Explore modern floor plans and customize every detail to match your lifestyle in 4 easy steps.</p>
-                <p>1. Choose Elevation > 2. Customize Main Level > 3. Customize Basement > 4. Get your free cutomized design</p>
-            </section>
+    <h2>Create Your Dream Home</h2>
+    <p style="max-width: 800px; margin: 0 auto;">Explore modern floor plans and customize every detail to match your lifestyle in 4 easy steps.</p>
+
+    <div class="steps-flow-container" style="display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 80px; margin-bottom: 40px; flex-wrap: wrap;">
+        
+        <div class="step-block" style="position: relative; display: flex; flex-direction: column; align-items: center; width: 160px;">
+            <div class="step-label" style="position: absolute; bottom: 100%; left: 0; right: 0; text-align: center; font-weight: bold; color: white; margin-bottom: 15px;">1. Choose Your Elevation</div>
+            <div class="step-icon-wrapper" style="padding: 10px; border-radius: 50%; background-color: white; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; width: 70px; height: 70px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <span class="material-symbols-outlined" style="font-size: 36px; color: var(--primary-color);">home</span>
+            </div>
+        </div>
+
+        <div class="step-separator" style="font-size: 48px; color: white; font-weight: bold; line-height: 1;">&rsaquo;</div>
+
+        <div class="step-block" style="position: relative; display: flex; flex-direction: column; align-items: center; width: 160px;">
+            <div class="step-label" style="position: absolute; bottom: 100%; left: 0; right: 0; text-align: center; font-weight: bold; color: white; margin-bottom: 15px;">2. Customize Your Main-Level</div>
+            <div class="step-icon-wrapper" style="padding: 10px; border-radius: 50%; background-color: white; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; width: 70px; height: 70px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--primary-color)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 21H3V3h18v18h-6"></path>
+                    <path d="M9 21V9H3"></path>
+                    <path d="M15 3v8h6"></path>
+                    <path d="M15 15v6"></path>
+                </svg>
+            </div>
+        </div>
+
+        <div class="step-separator" style="font-size: 48px; color: white; font-weight: bold; line-height: 1;">&rsaquo;</div>
+
+        <div class="step-block" style="position: relative; display: flex; flex-direction: column; align-items: center; width: 160px;">
+            <div class="step-label" style="position: absolute; bottom: 100%; left: 0; right: 0; text-align: center; font-weight: bold; color: white; margin-bottom: 15px;">3. Customize Your Basement</div>
+            <div class="step-icon-wrapper" style="padding: 10px; border-radius: 50%; background-color: white; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; width: 70px; height: 70px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--primary-color)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 21H3V3h18v18h-6"></path>
+                    <path d="M9 21V9H3"></path>
+                    <path d="M15 3v8h6"></path>
+                    <path d="M15 15v6"></path>
+                </svg>
+            </div>
+        </div>
+
+        <div class="step-separator" style="font-size: 48px; color: white; font-weight: bold; line-height: 1;">&rsaquo;</div>
+
+        <div class="step-block" style="position: relative; display: flex; flex-direction: column; align-items: center; width: 160px;">
+            <div class="step-label" style="position: absolute; bottom: 100%; left: 0; right: 0; text-align: center; font-weight: bold; color: white; margin-bottom: 15px;">4. Get Your Free Cutomized Design</div>
+            <div class="step-icon-wrapper" style="padding: 10px; border-radius: 50%; background-color: white; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; width: 70px; height: 70px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <span class="material-symbols-outlined" style="font-size: 36px; color: var(--primary-color);">auto_stories</span>
+            </div>
+        </div>
+        
+    </div>
+
+    </section>
             <section class="models-section">
                 <div id="modelHomeGrid" class="model-home-grid">
                     <p>Loading models...</p>

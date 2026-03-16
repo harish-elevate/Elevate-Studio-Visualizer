@@ -243,7 +243,7 @@ function renderClientCanvas(floorData) {
     if (!imageUrl) {
         clientCanvas.setBackgroundColor('#ffffff', clientCanvas.renderAll.bind(clientCanvas));
         const text = new fabric.Text(isElevation ? 'Choose The Elevation For Your Home' : 'No Floor Plan Available', {
-            fontSize: 20, fill: '#999', originX: 'center', originY: 'center',
+            fontSize: 20, fill: '#999', fontFamily: 'Montserrat', originX: 'center', originY: 'center',
             left: canvasWidth / 2, top: canvasHeight / 2, selectable: false
         });
         clientCanvas.add(text);
