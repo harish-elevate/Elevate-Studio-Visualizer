@@ -1225,50 +1225,85 @@ function renderReviewPage() {
 
 async function getBase64ImageFromUrl(imageUrl) {
     return new Promise((resolve) => {
+        if (!imageUrl || imageUrl === 'null') return resolve(null); 
+        
         const img = new Image();
-        img.crossOrigin = 'Anonymous';
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
-            
-            // Limit massive gallery photos to a reasonable max dimension for PDFs
-            const maxDim = 1200; 
-            if (width > maxDim || height > maxDim) {
-                if (width > height) {
-                    height = Math.round((height / width) * maxDim);
-                    width = maxDim;
-                } else {
-                    width = Math.round((width / height) * maxDim);
-                    height = maxDim;
-                }
-            }
-
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            
-            // Fill white background to prevent transparent areas turning black in JPEG
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            // Export as JPEG with 75% quality (Massive file size reduction)
-            resolve(canvas.toDataURL('image/jpeg', 0.75));
+        let isDone = false;
+        
+        // Failsafe closer: ensures we only resolve once
+        const finish = (res) => { 
+            if (!isDone) { 
+                isDone = true; 
+                resolve(res); 
+            } 
         };
-        img.onerror = () => resolve(null);
+
+        // Only apply CORS rules to external internet links, not local data
+        if (!imageUrl.startsWith('data:')) {
+            img.crossOrigin = 'Anonymous';
+        }
+
+        img.onload = () => {
+            try {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                
+                if (width === 0 || height === 0) return finish(null);
+
+                const maxDim = 1200; 
+                if (width > maxDim || height > maxDim) {
+                    if (width > height) {
+                        height = Math.round((height / width) * maxDim);
+                        width = maxDim;
+                    } else {
+                        width = Math.round((width / height) * maxDim);
+                        height = maxDim;
+                    }
+                }
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0, width, height);
+                finish(canvas.toDataURL('image/jpeg', 0.75));
+            } catch(e) {
+                finish(null);
+            }
+        };
+        img.onerror = () => finish(null);
         img.src = imageUrl;
+
+        // THE STRICT FAILSAFE: If it takes longer than 2 seconds, skip it!
+        setTimeout(() => finish(null), 2000); 
     });
 }
 
 function openLeadCaptureModal() {
-    getEl('modalTitle').textContent = 'Where should we send your brochure?';
+    getEl('modalTitle').textContent = 'Download Your Custom Design';
     getEl('modalForm').innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 15px; margin-top: 15px;">
             <p style="color: #666; font-size: 0.9rem; margin-bottom: 5px;">Please enter your details to generate your custom home brochure.</p>
             <input type="text" id="pdfClientName" placeholder="Full Name (Required)" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);" required>
             <input type="email" id="pdfClientEmail" placeholder="Email Address (Required)" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);" required>
             <input type="tel" id="pdfClientPhone" placeholder="Phone Number (Optional)" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);">
+            <select id="pdfClientCity" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body); background-color: #fff;" required>
+                <option value="" disabled selected>Which city are you looking to build in?</option>
+                <option value="Did not decide city yet">Did not decide city yet</option>
+                <option value="Kansas City MO">Kansas City MO</option>
+                <option value="Lee's Summit">Lee's Summit</option>
+                <option value="Olathe">Olathe</option>
+                <option value="Overland Park">Overland Park</option>
+                <option value="Shawnee">Shawnee</option>
+                <option value="Blue Springs">Blue Springs</option>
+                <option value="Raymore">Raymore</option>
+                <option value="Raytown">Raytown</option>
+                <option value="Belton">Belton</option>
+                <option value="Grandview">Grandview</option>
+                <option value="Lenexa">Lenexa</option>
+                <option value="City Not Listed">City Not Listed</option>
+            </select>
         </div>
     `;
     
@@ -1285,35 +1320,51 @@ function openLeadCaptureModal() {
         const nameInput = getEl('pdfClientName');
         const emailInput = getEl('pdfClientEmail');
         const phoneInput = getEl('pdfClientPhone');
+        const cityInput = getEl('pdfClientCity');
 
         const name = nameInput.value.trim();
         const email = emailInput.value.trim();
         const phone = phoneInput.value.trim();
+        const city = cityInput.value;
 
-        if (!name || !email) {
-            alert("Please provide your Name and Email to download your custom brochure.");
+        if (!name || !email || !city) {
+            alert("Please provide your Name, Email, and City to download your custom brochure.");
             nameInput.style.borderColor = name ? '#ccc' : 'red';
             emailInput.style.borderColor = email ? '#ccc' : 'red';
+            cityInput.style.borderColor = city ? '#ccc' : 'red';
             return; 
         }
 
         nameInput.style.borderColor = '#ccc';
         emailInput.style.borderColor = '#ccc';
+        cityInput.style.borderColor = '#ccc';
 
-        newSaveBtn.textContent = 'Preparing PDF...';
-        newSaveBtn.disabled = true;
+        const currentModel = db.ModelHome.find(m => m.id === state.currentModelHomeId);
+        const modelName = currentModel ? currentModel.Name : 'Custom Home';
+
+        hide('modal');
+
+        // --- THE PREMIUM LOADER ---
+        const loaderHtml = `
+            <div id="premiumLoaderOverlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.85); backdrop-filter: blur(8px); z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px;">
+                <div style="position: relative; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; margin-bottom: 30px;">
+                    <div style="position: absolute; width: 100%; height: 100%; border: 4px solid #eee; border-top-color: var(--primary-color); border-radius: 50%; animation: pdfSpin 1s linear infinite;"></div>
+                    <span style="font-size: 40px; color: var(--primary-color); font-weight: bold; font-family: sans-serif;">+</span>
+                </div>
+                <h2 style="color: var(--headings-dark); margin-bottom: 15px; font-family: var(--font-heading);">Your download will begin shortly.</h2>
+                <p style="max-width: 550px; color: #555; line-height: 1.6; font-size: 1.1rem; font-family: var(--font-body);">Thank you for customizing an Elevate Design + Build plan. The <strong>${modelName}</strong> is one of our most popular plans. Our team is generating pricing for your custom house now! Looking forward to connecting with you soon.</p>
+                <style>@keyframes pdfSpin { 100% { transform: rotate(360deg); } }</style>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', loaderHtml);
 
         try {
-            const currentModel = db.ModelHome.find(m => m.id === state.currentModelHomeId);
-            const modelName = currentModel ? currentModel.Name : 'Custom Home';
-
             // --- BUILD HUMAN-READABLE HTML SELECTIONS ---
             let formattedSelections = '<ul style="margin:0; padding-left:20px; font-family: Arial, sans-serif; font-size: 14px; color: #333;">';
             let hasSelections = false;
 
             Object.keys(state.customizerSelections).forEach(setId => {
-                if (setId === 'gallery_picks') return; // Skip the gallery picks bucket
-                
+                if (setId === 'gallery_picks') return; 
                 const setRef = db.OptionSet.find(s => s.id == setId);
                 if (!setRef) return;
 
@@ -1323,89 +1374,126 @@ function openLeadCaptureModal() {
                 if (idsArray.length > 0) {
                     hasSelections = true;
                     formattedSelections += `<li style="margin-bottom: 10px;"><strong>${setRef.Name}:</strong><ul style="margin-top: 4px;">`;
-                    
                     idsArray.forEach(optId => {
                         const optRef = db.Option.find(o => o.id == optId);
                         if (optRef) {
                             const codeText = optRef.code ? ` <span style="color:#888; font-size:12px;">(${optRef.code})</span>` : '';
                             const stylePick = state.customizerSelections['gallery_picks']?.[optId];
                             const styleText = stylePick ? ` <br><em style="color:#ec8d44; font-size:12px;">↳ Style: ${stylePick}</em>` : '';
-                            
                             formattedSelections += `<li style="margin-bottom: 4px;">${optRef.Name}${codeText}${styleText}</li>`;
                         }
                     });
-                    
                     formattedSelections += `</ul></li>`;
                 }
             });
             formattedSelections += '</ul>';
 
-            if (!hasSelections) {
-                formattedSelections = '<p style="color: #666; font-style: italic;">No custom upgrades selected.</p>';
-            }
-            // ---------------------------------------------
+            if (!hasSelections) formattedSelections = '<p style="color: #666; font-style: italic;">No custom upgrades selected.</p>';
 
             const { error } = await supabase.from('Leads').insert([{
                 client_name: name,
                 client_email: email,
                 client_phone: phone,
+                client_city: city, 
                 model_name: modelName,
                 selections_json: state.customizerSelections,
-                selections_text: formattedSelections // Saves the beautiful HTML string!
+                selections_text: formattedSelections
             }]);
 
             if (error) throw error;
 
-            hide('modal');
-            generatePDFBrochure();
+            // Pass the data down to the PDF generator
+            await generatePDFBrochure(name, email, phone, city, modelName);
+
+            // --- THE SUCCESS SCREEN ---
+            const loaderOverlay = document.getElementById('premiumLoaderOverlay');
+            if (loaderOverlay) {
+                loaderOverlay.innerHTML = `
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); max-width: 500px;">
+                        <span class="material-symbols-outlined" style="font-size: 60px; color: #4caf50; margin-bottom: 20px;">check_circle</span>
+                        <h2 style="color: var(--headings-dark); margin-bottom: 15px; font-family: var(--font-heading);">Download Complete!</h2>
+                        <p style="color: #666; font-size: 1rem; margin-bottom: 30px; line-height: 1.5;">Your custom brochure has been successfully downloaded. What would you like to do next?</p>
+                        
+                        <div style="display: flex; gap: 15px; width: 100%;">
+                            <button id="btnGoBack" style="flex: 1; padding: 12px; border-radius: 6px; border: 2px solid var(--primary-color); background: white; color: var(--primary-color); font-weight: bold; cursor: pointer; font-size: 0.95rem; transition: all 0.2s;">
+                                Back to Customizer
+                            </button>
+                            <button id="btnStartNew" style="flex: 1; padding: 12px; border-radius: 6px; border: none; background: var(--primary-color); color: white; font-weight: bold; cursor: pointer; font-size: 0.95rem; transition: all 0.2s;">
+                                Start New Design
+                            </button>
+                        </div>
+                    </div>
+                `;
+
+                // Wire up the new buttons
+                document.getElementById('btnGoBack').addEventListener('click', () => {
+                    loaderOverlay.remove();
+                });
+                
+                document.getElementById('btnStartNew').addEventListener('click', () => {
+                    window.location.reload(); 
+                });
+            }
 
         } catch (err) {
             console.error("Error saving lead:", err);
             alert("There was an issue processing your request. Please try again.");
-            newSaveBtn.textContent = 'Download Brochure';
-            newSaveBtn.disabled = false;
+            const loader = document.getElementById('premiumLoaderOverlay');
+            if (loader) loader.remove(); 
         }
     });
     
     show('modal');
-}
+} // <-- This brace closes openLeadCaptureModal properly!
 
-async function generatePDFBrochure() {
-    const btn = getEl('exportBrochureBtn');
-    const originalText = btn.textContent;
-    btn.textContent = 'Preparing PDF...';
-    btn.disabled = true;
+// --- AND HERE IS THE SECOND FUNCTION ---
+
+async function generatePDFBrochure(clientName, clientEmail, clientPhone, clientCity, modelName) {
+    
+    const getSafeDimensions = (dataUrl) => new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => resolve({ w: img.width, h: img.height });
+        img.onerror = () => resolve(null);
+        img.src = dataUrl;
+    });
 
     try {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF('p', 'mm', 'a4');
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        
-        const currentModel = db.ModelHome.find(m => m.id === state.currentModelHomeId);
-        const modelName = currentModel ? currentModel.Name : 'Custom Home';
-        const clientName = getEl('pdfClientName') ? getEl('pdfClientName').value.trim() : '';
-        const clientEmail = getEl('pdfClientEmail') ? getEl('pdfClientEmail').value.trim() : '';
-        const clientPhone = getEl('pdfClientPhone') ? getEl('pdfClientPhone').value.trim() : '';
         const dateString = new Date().toLocaleDateString();
 
-        // COVER PAGE
         doc.setFont('helvetica', 'bold').setFontSize(28).setTextColor(30, 30, 30);
-        doc.text('Elevate Design + Build', pageWidth / 2, 80, { align: 'center' });
+        doc.text('Elevate Design + Build', pageWidth / 2, 60, { align: 'center' });
         doc.setFont('helvetica', 'normal').setFontSize(18).setTextColor(236, 141, 68); 
-        doc.text(`Model: ${modelName}`, pageWidth / 2, 100, { align: 'center' });
-        doc.setDrawColor(200, 200, 200).line(40, 110, pageWidth - 40, 110);
+        doc.text(`Model: ${modelName}`, pageWidth / 2, 80, { align: 'center' });
+        doc.setDrawColor(200, 200, 200).line(40, 90, pageWidth - 40, 90);
 
         doc.setFontSize(14).setTextColor(100, 100, 100);
-        let currentY = 130;
+        let currentY = 110;
         if (clientName) { doc.text(`Prepared for: ${clientName}`, pageWidth / 2, currentY, { align: 'center' }); currentY += 10; }
         if (clientEmail) { doc.text(clientEmail, pageWidth / 2, currentY, { align: 'center' }); currentY += 10; }
         if (clientPhone) { doc.text(clientPhone, pageWidth / 2, currentY, { align: 'center' }); currentY += 10; }
+        if (clientCity) { doc.text(`Build City: ${clientCity}`, pageWidth / 2, currentY, { align: 'center' }); currentY += 10; }
         
         currentY += 5;
         doc.text(`Date: ${dateString}`, pageWidth / 2, currentY, { align: 'center' });
 
-        // FLOORS
+        let copyY = pageHeight - 65;
+        doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(236, 141, 68);
+        const excitingText = "That was exciting";
+        doc.text(excitingText, 25, copyY);
+        const textWidth = doc.getTextWidth(excitingText);
+        
+        doc.setFont('helvetica', 'normal').setTextColor(100, 100, 100);
+        doc.text(" — nice work bringing one of our most popular floor plans to life!", 25 + textWidth, copyY);
+        
+        copyY += 7;
+        const paragraph = "You just took the first step toward a home that's designed around the way you live, with modern style, smart functionality, and welcoming spaces made for gathering, celebrating, and making memories.\n\nOur team is already reviewing your selections, and we'll be in touch soon with a detailed estimated investment so you can take the next step toward making your dream home a reality.";
+        const splitText = doc.splitTextToSize(paragraph, pageWidth - 50);
+        doc.text(splitText, 25, copyY);
+
         for (const floor of wizardSteps.filter(step => !step.isReview)) {
             const isElevation = floor.Name.toLowerCase().includes('elevation') || floor.Name.toLowerCase().includes('exterior');
             const snapshotUrl = state.floorSnapshots && state.floorSnapshots[floor.id];
@@ -1420,7 +1508,6 @@ async function generatePDFBrochure() {
                 });
             });
 
-            // RENDER PAGE
             if (snapshotUrl || selectedOptions.length > 0) {
                 doc.addPage();
                 doc.setFont('helvetica', 'bold').setFontSize(20).setTextColor(236, 141, 68);
@@ -1429,26 +1516,32 @@ async function generatePDFBrochure() {
 
                 let pdfImgHeight = 0;
                 if (snapshotUrl) {
-                    const imgProps = doc.getImageProperties(snapshotUrl);
-                    const pdfImgWidth = pageWidth - 40; 
-                    pdfImgHeight = (imgProps.height * pdfImgWidth) / imgProps.width;
-                    doc.addImage(snapshotUrl, 'JPEG', 20, 40, pdfImgWidth, pdfImgHeight);
+                    try {
+                        const dims = await getSafeDimensions(snapshotUrl);
+                        if (dims && dims.w > 0) {
+                            const pdfImgWidth = pageWidth - 40; 
+                            pdfImgHeight = (dims.h * pdfImgWidth) / dims.w;
+                            doc.addImage(snapshotUrl, 'JPEG', 20, 40, pdfImgWidth, pdfImgHeight);
+                        }
+                    } catch(e) {
+                        console.warn("Safely skipped floor plan snapshot", e);
+                    }
                 }
 
                 if (isElevation && selectedOptions.length > 0) {
                     const elevOpt = selectedOptions[0]; 
+                    const textYPos = snapshotUrl ? (40 + pdfImgHeight + 15) : 50; 
                     doc.setFont('helvetica', 'bold').setFontSize(14).setTextColor(30, 30, 30);
-                    doc.text(`Selected Elevation: ${elevOpt.opt.Name}`, 20, 40 + pdfImgHeight + 15);
+                    doc.text(`Selected Elevation: ${elevOpt.opt.Name}`, 20, textYPos);
                     
                     if (elevOpt.opt.code) {
                         doc.setFont('helvetica', 'normal').setFontSize(11).setTextColor(100, 100, 100);
-                        doc.text(`Plan Code: ${elevOpt.opt.code}`, 20, 40 + pdfImgHeight + 22);
+                        doc.text(`Plan Code: ${elevOpt.opt.code}`, 20, textYPos + 7);
                     }
                     selectedOptions = []; 
                 }
             }
 
-            // INTERIOR OPTIONS
             if (selectedOptions.length > 0) {
                 doc.addPage();
                 doc.setFont('helvetica', 'bold').setFontSize(20).setTextColor(30, 30, 30);
@@ -1465,10 +1558,14 @@ async function generatePDFBrochure() {
                     }
 
                     if (base64Thumb) {
-                        const thumbProps = doc.getImageProperties(base64Thumb);
-                        const thumbWidth = 30; 
-                        const thumbHeight = (thumbProps.height * thumbWidth) / thumbProps.width; 
-                        doc.addImage(base64Thumb, 'JPEG', 20, yPos, thumbWidth, thumbHeight);
+                        try {
+                            const dims = await getSafeDimensions(base64Thumb);
+                            if (dims && dims.w > 0) {
+                                const thumbWidth = 30; 
+                                const thumbHeight = (dims.h * thumbWidth) / dims.w; 
+                                doc.addImage(base64Thumb, 'JPEG', 20, yPos, thumbWidth, thumbHeight);
+                            }
+                        } catch(e) {}
                     }
 
                     doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(236, 141, 68); 
@@ -1490,8 +1587,6 @@ async function generatePDFBrochure() {
                         let images = [];
                         try {
                             const raw = typeof item.opt.gallery_images === 'string' ? JSON.parse(item.opt.gallery_images) : item.opt.gallery_images;
-                            
-                            // VETTED FIX: Safely match groups in the PDF exactly like we did in the Modal UI
                             images = raw.filter(img => {
                                 const gName = img.group || img.Group || img.PackageName || 'Standard Style';
                                 return gName === pkgName;
@@ -1503,10 +1598,12 @@ async function generatePDFBrochure() {
                             const imgUrl = imgData.url || imgData.Url || imgData.URL || imgData.image;
                             const b64 = await getBase64ImageFromUrl(imgUrl);
                             if (b64) {
-                                doc.addImage(b64, 'JPEG', 30, yPos, 80, 50); 
-                                doc.setFont('helvetica', 'italic').setFontSize(10).setTextColor(100,100,100);
-                                doc.text(`Selected Style: ${pkgName}`, 30, yPos + 55);
-                                yPos += 65;
+                                try {
+                                    doc.addImage(b64, 'JPEG', 30, yPos, 80, 50); 
+                                    doc.setFont('helvetica', 'italic').setFontSize(10).setTextColor(100,100,100);
+                                    doc.text(`Selected Style: ${pkgName}`, 30, yPos + 55);
+                                    yPos += 65;
+                                } catch(e) {}
                             }
                         }
                     }
@@ -1515,15 +1612,19 @@ async function generatePDFBrochure() {
             }
         }
 
+        const pageCount = doc.internal.getNumberOfPages();
+        for(let i = 1; i <= pageCount; i++) {
+            doc.setPage(i);
+            doc.setFont('helvetica', 'normal').setFontSize(10).setTextColor(150, 150, 150);
+            doc.text('Call us: 816-622-8826   |   Elevate Design + Build', pageWidth / 2, pageHeight - 12, { align: 'center' });
+        }
+
         const saveName = clientName ? `${clientName.replace(/\s+/g, '_')}_Brochure.pdf` : `${modelName}_Brochure.pdf`;
         doc.save(saveName);
 
     } catch (err) {
         console.error("PDF generation failed:", err);
-        alert("There was an error generating your PDF brochure.");
-    } finally {
-        btn.textContent = originalText;
-        btn.disabled = false;
+        throw err; 
     }
 }
 
