@@ -19,6 +19,7 @@ async function initializeClientApp() {
 }
 
 // --- LANDING PAGE LOGIC ---
+// --- LANDING PAGE LOGIC ---
 function renderLandingPage() {
     const grid = getEl('modelHomeGrid');
     grid.innerHTML = '';
@@ -29,22 +30,35 @@ function renderLandingPage() {
     }
     
     db.ModelHome.forEach(model => {
-        const card = document.createElement('a');
-        card.className = 'model-home-card';
-        card.href = '#';
-        card.style.textDecoration = 'none'; // Keeps text looking clean
+        // 1. Check if the model is active (defaults to true if the column is newly added)
+        const isActive = model.is_active !== false; 
         
-        // Added the description paragraph below the name
+        // 2. If it is active, make it a clickable link (<a>). If not, just make it a static box (<div>).
+        const card = document.createElement(isActive ? 'a' : 'div');
+        card.className = 'model-home-card';
+        
+        if (isActive) {
+            card.href = '#';
+            card.style.textDecoration = 'none';
+            card.addEventListener('click', (e) => {
+                e.preventDefault();
+                startWizard(model.id);
+            });
+        } else {
+            // Styling to make inactive cards look "disabled"
+            card.style.opacity = '0.75';
+            card.style.cursor = 'default';
+        }
+        
+        // 3. Inject the HTML (adding the grayscale filter and the "Coming Soon" badge if inactive)
         card.innerHTML = `
-            <img src="${model.CoverImage}" alt="${model.Name}" class="model-home-card-image">
+            <div style="position: relative;">
+                <img src="${model.CoverImage}" alt="${model.Name}" class="model-home-card-image" ${!isActive ? 'style="filter: grayscale(100%);"' : ''}>
+                ${!isActive ? `<div style="position: absolute; top: 15px; right: 15px; background: var(--primary-color); color: white; padding: 6px 12px; border-radius: 4px; font-weight: bold; font-size: 0.8rem; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">Coming Soon</div>` : ''}
+            </div>
             <div class="model-home-card-name" style="margin-bottom: 5px;">${model.Name}</div>
             ${model.Description ? `<p style="font-size: 0.9rem; color: #666; margin: 0 15px 15px; text-align: center; line-height: 1.4;">${model.Description}</p>` : ''}
         `;
-        
-        card.addEventListener('click', (e) => {
-            e.preventDefault();
-            startWizard(model.id);
-        });
         
         grid.appendChild(card);
     });
@@ -84,6 +98,28 @@ function buildWizardProgressBar() {
         stepEl.className = 'wizard-step';
         stepEl.id = `step-indicator-${index}`;
         stepEl.textContent = `${index + 1}. ${step.Name}`;
+        
+        // Make it look clickable when hovering
+        stepEl.style.cursor = 'pointer';
+        stepEl.style.transition = 'all 0.2s ease';
+
+        // Add the click logic
+        stepEl.addEventListener('click', () => {
+            // If they click the step they are already on, do nothing
+            if (currentStepIndex === index) return;
+
+            // 1. Save a snapshot of the CURRENT screen before moving away
+            const currentStepData = wizardSteps[currentStepIndex];
+            if (!currentStepData.isReview) {
+                state.floorSnapshots = state.floorSnapshots || {};
+                state.floorSnapshots[currentStepData.id] = captureCanvasSnapshot();
+            }
+
+            // 2. Update the index and load the newly clicked step
+            currentStepIndex = index;
+            loadWizardStep();
+        });
+
         bar.appendChild(stepEl);
     });
 }
@@ -1635,6 +1671,16 @@ getEl('logoLink').addEventListener('click', (e) => {
     hide('reviewPage');
     show('landingPage');
 });
+
+const headerTextLink = getEl('headerTextLink');
+if (headerTextLink) {
+    headerTextLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        hide('wizardPage');
+        hide('reviewPage');
+        show('landingPage');
+    });
+}
 
 getEl('wizardNextBtn').addEventListener('click', () => {
     const currentStepData = wizardSteps[currentStepIndex];

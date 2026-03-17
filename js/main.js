@@ -85,10 +85,12 @@ function setupAdminEventListeners() {
             showModal('Create New Model Home', [
                 { label: 'Model Name', id: 'Name' }, 
                 { label: 'Description (Optional)', id: 'Description', type: 'textarea' }, // <--- NEW FIELD
-                { label: 'Cover Image', id: 'CoverImage', type: 'file' }
+                { label: 'Cover Image', id: 'CoverImage', type: 'file' },
+                { label: 'Active (Show to Public)', id: 'is_active', type: 'checkbox', checked: true }
             ]);
             state.modalSaveCallback = async (formData) => {
                 if (formData.Name && formData.CoverImage) {
+                    formData.is_active = !!formData.is_active;
                     await data.addModel(formData);
                     await loadDataFromSupabase();
                     renderAdminDashboard();
@@ -107,9 +109,11 @@ function setupAdminEventListeners() {
             showModal('Edit Model Details', [
                 { label: 'Model Name', id: 'Name', value: model.Name }, 
                 { label: 'Description (Optional)', id: 'Description', value: model.Description || '', type: 'textarea' }, // <--- NEW FIELD
-                { label: 'New Cover Image (Optional)', id: 'CoverImage', type: 'file', existingValue: model.CoverImage }
+                { label: 'New Cover Image (Optional)', id: 'CoverImage', type: 'file', existingValue: model.CoverImage },
+                { label: 'Active (Show to Public)', id: 'is_active', type: 'checkbox', checked: model.is_active !== false }
             ]);
             state.modalSaveCallback = async (formData) => {
+                formData.is_active = !!formData.is_active;
                 await data.updateModel(model.id, formData);
                 await loadDataFromSupabase();
                 initAdminModelManagement(model.id);
