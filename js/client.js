@@ -958,7 +958,7 @@ function openSidebarMenu(context) {
                 // Add Gallery Button if applicable
                 if (hasValidGallery) {
                     const galBtn = document.createElement('button');
-                    galBtn.textContent = 'Explore Styles';
+                    galBtn.innerHTML = '<span style="display: flex; align-items: center; justify-content: center; gap: 6px;"><span class="material-symbols-outlined" style="font-size: 1.1rem;">photo_camera</span> Explore Styles</span>';
                     galBtn.style.cssText = `flex: 1; padding: 10px; border-radius: 6px; border: 1px solid var(--primary-color); background: white; color: var(--primary-color); font-weight: bold; cursor: pointer; font-size: 0.8rem;`;
                     galBtn.onclick = (e) => { e.stopPropagation(); openGalleryModal(opt, set); };
                     btnContainer.appendChild(galBtn);
