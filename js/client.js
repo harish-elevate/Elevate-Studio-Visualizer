@@ -1317,10 +1317,13 @@ async function getBase64ImageFromUrl(imageUrl) {
 }
 
 function openLeadCaptureModal() {
-    getEl('modalTitle').textContent = 'Download Your Custom Design';
+    // 1. Updated Title
+    getEl('modalTitle').textContent = 'Where To Send Your Brochure';
+    
     getEl('modalForm').innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 15px; margin-top: 15px;">
-            <p style="color: #666; font-size: 0.9rem; margin-bottom: 5px;">Please enter your details to generate your custom home brochure.</p>
+            <p style="color: #666; font-size: 0.9rem; margin-bottom: 5px;">Please enter your details to receive your custom home brochure via email.</p>
+            
             <input type="text" id="pdfClientName" placeholder="Full Name (Required)" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);" required>
             <input type="email" id="pdfClientEmail" placeholder="Email Address (Required)" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);" required>
             <input type="tel" id="pdfClientPhone" placeholder="Phone Number (Optional)" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);">
@@ -1344,11 +1347,17 @@ function openLeadCaptureModal() {
     `;
     
     const saveBtn = getEl('modalSave');
-    saveBtn.textContent = 'Download Brochure';
+    
+    // 3. Updated Button Text
+    saveBtn.textContent = 'Send My Brochure';
     saveBtn.classList.remove('hidden');
     
     const newSaveBtn = saveBtn.cloneNode(true);
     saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
+    
+    getEl('modalCancel').onclick = () => hide('modal');
+
+    // ... The rest of your newSaveBtn.addEventListener logic stays EXACTLY the same!
     
     getEl('modalCancel').onclick = () => hide('modal');
     
