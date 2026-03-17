@@ -1387,7 +1387,7 @@ function openLeadCaptureModal() {
                     <div style="position: absolute; width: 100%; height: 100%; border: 4px solid #eee; border-top-color: var(--primary-color); border-radius: 50%; animation: pdfSpin 1s linear infinite;"></div>
                     <span style="font-size: 40px; color: var(--primary-color); font-weight: bold; font-family: sans-serif;">+</span>
                 </div>
-                <h2 style="color: var(--headings-dark); margin-bottom: 15px; font-family: var(--font-heading);">Your download will begin shortly.</h2>
+                <h2 style="color: var(--headings-dark); margin-bottom: 15px; font-family: var(--font-heading);">Your custom brochure is being generated.</h2>
                 <p style="max-width: 550px; color: #555; line-height: 1.6; font-size: 1.1rem; font-family: var(--font-body);">Thank you for customizing an Elevate Design + Build plan. The <strong>${modelName}</strong> is one of our most popular plans. Our team is generating pricing for your custom house now! Looking forward to connecting with you soon.</p>
                 <style>@keyframes pdfSpin { 100% { transform: rotate(360deg); } }</style>
             </div>
@@ -1426,29 +1426,68 @@ function openLeadCaptureModal() {
 
             if (!hasSelections) formattedSelections = '<p style="color: #666; font-style: italic;">No custom upgrades selected.</p>';
 
-            const { error } = await supabase.from('Leads').insert([{
+            // 1. Generate the PDF quietly in the background (Hold it in memory)
+            const pdfBlob = await generatePDFBrochure(name, email, phone, city, modelName);
+
+            if (!pdfBlob) throw new Error("Failed to generate PDF blob.");
+
+            // 2. Upload it to the Supabase 'brochures' bucket
+            const safeName = name.replace(/[^a-zA-Z0-9]/g, '_');
+            const fileName = `${Date.now()}_${safeName}_Brochure.pdf`;
+            
+            const { error: uploadError } = await supabase.storage
+                .from('brochures')
+                .upload(fileName, pdfBlob, { contentType: 'application/pdf' });
+
+            if (uploadError) throw uploadError;
+
+            // 3. Get the public, shareable link for Make.com
+            const { data: urlData } = supabase.storage
+                .from('brochures')
+                .getPublicUrl(fileName);
+            
+            const publicPdfUrl = urlData.publicUrl;
+
+            // 4. Save the Lead to the Database (Now including the PDF link!)
+            const { error: dbError } = await supabase.from('Leads').insert([{
                 client_name: name,
                 client_email: email,
                 client_phone: phone,
                 client_city: city, 
                 model_name: modelName,
                 selections_json: state.customizerSelections,
-                selections_text: formattedSelections
+                selections_text: formattedSelections,
+                brochure_url: publicPdfUrl 
             }]);
 
-            if (error) throw error;
+            if (dbError) throw dbError;
 
-            // Pass the data down to the PDF generator
-            await generatePDFBrochure(name, email, phone, city, modelName);
+            try {
+                // REPLACE THIS STRING WITH YOUR ACTUAL MAKE.COM WEBHOOK URL!
+                await fetch('https://hook.us2.make.com/wuo1b07ufi1z5macvgnzj9bh5r5vk32m', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: name,
+                        email: email,
+                        phone: phone,
+                        city: city,
+                        modelName: modelName,
+                        brochureUrl: publicPdfUrl
+                    })
+                });
+            } catch (webhookErr) {
+                console.error("Warning: Webhook failed to fire, but lead was saved.", webhookErr);
+            }
 
-            // --- THE SUCCESS SCREEN ---
+            // 5. --- THE NEW EMAIL SUCCESS SCREEN ---
             const loaderOverlay = document.getElementById('premiumLoaderOverlay');
             if (loaderOverlay) {
                 loaderOverlay.innerHTML = `
                     <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); max-width: 500px;">
-                        <span class="material-symbols-outlined" style="font-size: 60px; color: #4caf50; margin-bottom: 20px;">check_circle</span>
-                        <h2 style="color: var(--headings-dark); margin-bottom: 15px; font-family: var(--font-heading);">Download Complete!</h2>
-                        <p style="color: #666; font-size: 1rem; margin-bottom: 30px; line-height: 1.5;">Your custom brochure has been successfully downloaded. What would you like to do next?</p>
+                        <span class="material-symbols-outlined" style="font-size: 60px; color: #4caf50; margin-bottom: 20px;">mark_email_read</span>
+                        <h2 style="color: var(--headings-dark); margin-bottom: 15px; font-family: var(--font-heading);">It's on the way!</h2>
+                        <p style="color: #666; font-size: 1rem; margin-bottom: 30px; line-height: 1.5;">Your custom brochure has been generated and emailed to <strong>${email}</strong>. It should arrive in the next few minutes. <br><br><span style="font-size: 0.85rem; color: #888;">(Don't forget to check your spam folder just in case!)</span></p>
                         
                         <div style="display: flex; gap: 15px; width: 100%;">
                             <button id="btnGoBack" style="flex: 1; padding: 12px; border-radius: 6px; border: 2px solid var(--primary-color); background: white; color: var(--primary-color); font-weight: bold; cursor: pointer; font-size: 0.95rem; transition: all 0.2s;">
@@ -1461,19 +1500,13 @@ function openLeadCaptureModal() {
                     </div>
                 `;
 
-                // Wire up the new buttons
-                document.getElementById('btnGoBack').addEventListener('click', () => {
-                    loaderOverlay.remove();
-                });
-                
-                document.getElementById('btnStartNew').addEventListener('click', () => {
-                    window.location.reload(); 
-                });
+                document.getElementById('btnGoBack').addEventListener('click', () => loaderOverlay.remove());
+                document.getElementById('btnStartNew').addEventListener('click', () => window.location.reload());
             }
 
         } catch (err) {
-            console.error("Error saving lead:", err);
-            alert("There was an issue processing your request. Please try again.");
+            console.error("Error processing brochure:", err);
+            alert("There was an issue generating your brochure. Please try again.");
             const loader = document.getElementById('premiumLoaderOverlay');
             if (loader) loader.remove(); 
         }
@@ -1655,8 +1688,8 @@ async function generatePDFBrochure(clientName, clientEmail, clientPhone, clientC
             doc.text('Call us: 816-622-8826   |   Elevate Design + Build', pageWidth / 2, pageHeight - 12, { align: 'center' });
         }
 
-        const saveName = clientName ? `${clientName.replace(/\s+/g, '_')}_Brochure.pdf` : `${modelName}_Brochure.pdf`;
-        doc.save(saveName);
+        // Instead of downloading, hand the raw file data back to the app!
+        return doc.output('blob');
 
     } catch (err) {
         console.error("PDF generation failed:", err);
