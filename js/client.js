@@ -3,7 +3,11 @@ import { supabase } from './supabaseClient.js';
 
 // --- DOM UTILITIES ---
 const getEl = (id) => document.getElementById(id);
-const hide = (id) => getEl(id).classList.add('hidden');
+const hide = (id) => {
+    getEl(id).classList.add('hidden');
+    // Reset the modal width back to normal every time it closes!
+    if (id === 'modal') getEl('modal').querySelector('.modal-content').style.maxWidth = '';
+};
 const show = (id) => getEl(id).classList.remove('hidden');
 
 // --- WIZARD STATE ---
@@ -863,7 +867,6 @@ function openSidebarMenu(context) {
             card.style.cssText = `position: relative; border: ${isSelected ? '2px solid var(--primary-color)' : '1px solid #ddd'}; border-radius: 8px; overflow: hidden; background: #fff; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.05);`;
 
             card.innerHTML = `
-                ${(!isElevation && hasValidGallery) ? '<div style="position:absolute; top:8px; left:8px; background:rgba(255,255,255,0.9); padding:4px 8px; border-radius:20px; font-size:10px; font-weight:bold; color:var(--primary-color); z-index:2; border:1px solid #eee;"><span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle; margin-right:4px;">photo_camera</span>Styles</div>' : ''}
                 <div style="height: ${imgHeight}; background: #fdfdfd; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid #eee;">
                     <img src="${opt.Thumbnail}" style="max-width: 90%; max-height: 90%; object-fit: contain;">
                 </div>
@@ -1086,7 +1089,7 @@ function openGalleryModal(opt, set) {
         pkgPhotos.forEach(url => {
             const globalIdx = window.galleryLightboxImages.length;
             window.galleryLightboxImages.push(url);
-            html += `<img src="${url}" onclick="openLightbox(${globalIdx})" style="width: 100%; height: 120px; object-fit: cover; border-radius: 6px; border: 1px solid #eee; cursor: zoom-in;">`;
+            html += `<img src="${url}" onclick="openLightbox(${globalIdx})" style="width: 100%; height: 120px; object-fit: contain; background: #fdfdfd; border-radius: 6px; border: 1px solid #eee; cursor: zoom-in;">`;
         });
 
         html += `</div></div>`;
@@ -1108,6 +1111,7 @@ function openGalleryModal(opt, set) {
     }
 
     getEl('modalForm').innerHTML = html;
+    getEl('modal').querySelector('.modal-content').style.maxWidth = '900px';
     const saveBtn = getEl('modalSave');
     saveBtn.textContent = 'Finish Selection';
     saveBtn.onclick = () => hide('modal');
@@ -1325,9 +1329,9 @@ function openLeadCaptureModal() {
         <div style="display: flex; flex-direction: column; gap: 15px; margin-top: 15px;">
             <p style="color: #666; font-size: 0.9rem; margin-bottom: 5px;">Please enter your details to receive your custom home brochure via email.</p>
             
-            <input type="text" id="pdfClientName" placeholder="Full Name (Required)" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);" required>
-            <input type="email" id="pdfClientEmail" placeholder="Email Address (Required)" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);" required>
-            <input type="tel" id="pdfClientPhone" placeholder="Phone Number (Optional)" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);">
+            <input type="text" id="pdfClientName" autocomplete="name" placeholder="Full Name (Required)" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);" required>
+            <input type="email" id="pdfClientEmail" autocomplete="email" placeholder="Email Address (Required)" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);" required>
+            <input type="tel" id="pdfClientPhone" autocomplete="tel" placeholder="Phone Number (Optional)" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);">
             <select id="pdfClientCity" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body); background-color: #fff;" required>
                 <option value="" disabled selected>Which city are you looking to build in?</option>
                 <option value="Did not decide city yet">Did not decide city yet</option>
@@ -1489,6 +1493,8 @@ function openLeadCaptureModal() {
             } catch (webhookErr) {
                 console.error("Warning: Webhook failed to fire, but lead was saved.", webhookErr);
             }
+
+            await new Promise(resolve => setTimeout(resolve, 6000));
 
             // 5. --- THE NEW EMAIL SUCCESS SCREEN ---
             const loaderOverlay = document.getElementById('premiumLoaderOverlay');
