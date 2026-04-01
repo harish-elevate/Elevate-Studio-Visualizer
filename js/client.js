@@ -129,6 +129,7 @@ let lastRenderedFloorId = null;
 let currentActiveSidebarContext = null; 
 
 function loadWizardStep() {
+    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
     wizardSteps.forEach((step, index) => {
         const el = getEl(`step-indicator-${index}`);
         el.classList.remove('active', 'completed');
