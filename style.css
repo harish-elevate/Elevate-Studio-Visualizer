@@ -41,7 +41,7 @@ img { max-width: 100%; height: auto; display: block; }
 }
 .btn-danger-outline:hover { background-color: var(--danger-text-color); color: var(--bg-main); }
 .app-header {
-    display: flex; justify-content: space-between; align-items: center; padding: 20px 40px;
+    display: flex; justify-content: space-between; align-items: center; padding: 10px 40px;
     background-color: var(--bg-main); border-bottom: 1px solid var(--border-color);
 }
 .header-brand a, .header-left a { text-decoration: none; color: inherit; }
