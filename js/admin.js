@@ -1052,7 +1052,7 @@ export function renderAdminEditorControls() {
     });
 }
 
-// --- GALLERY MANAGER (FIXED: BUTTON BINDING) ---
+// --- GALLERY MANAGER (UPDATED: DRAGGABLE PACKAGES) ---
 function openGalleryManager(optionId) {
     const option = db.Option.find(o => o.id === optionId);
     let galleryImages = [];
@@ -1064,32 +1064,53 @@ function openGalleryManager(optionId) {
 
     // Normalize
     galleryImages = galleryImages.map(img => typeof img === 'string' ? { url: img, group: 'Uncategorized', description: '' } : img);
-    // Ensure group exists
     galleryImages.forEach(img => { if(!img.group) img.group = 'Uncategorized'; });
+
+    let wrapper; // Declare in wider scope so sync function can access it
+
+    // HELPER: Scrape the DOM to lock in the exact visual order of packages and images
+    const syncGalleryStateFromDOM = () => {
+        if (!wrapper || !wrapper.parentNode) return; 
+        const newState = [];
+        wrapper.querySelectorAll('.package-section').forEach(section => {
+            const groupName = section.querySelector('.package-title').textContent;
+            const items = section.querySelectorAll('.modal-gallery-item');
+            
+            if (items.length === 0) {
+                // Keep empty packages alive
+                newState.push({ url: 'placeholder', group: groupName, description: '', isPlaceholder: true });
+            } else {
+                items.forEach(item => {
+                    const url = item.dataset.url;
+                    const desc = item.querySelector('.gallery-desc-input').value;
+                    newState.push({ url, group: groupName, description: desc });
+                });
+            }
+        });
+        galleryImages = newState;
+    };
 
     // RENDER FUNCTION FOR THE MODAL CONTENT
     const renderModalContent = () => {
-        const wrapper = createElement('div', { className: 'admin-gallery-wrapper' });
+        wrapper = createElement('div', { className: 'admin-gallery-wrapper' });
         
-        // 1. Group Images by Package
-        const packages = {};
+        // Extract groups in the exact order they appear in the array
+        const orderedGroups = [];
         galleryImages.forEach(img => {
-            // FIX: DO NOT SKIP PLACEHOLDERS. We need them to generate headers.
-            if (!packages[img.group]) packages[img.group] = [];
-            packages[img.group].push(img);
+            if (!orderedGroups.includes(img.group)) orderedGroups.push(img.group);
         });
+        if (!orderedGroups.includes('Uncategorized')) orderedGroups.unshift('Uncategorized');
 
-        if (!packages['Uncategorized']) packages['Uncategorized'] = [];
-
-        // 2. Render Package Sections
-        Object.keys(packages).sort((a,b) => a === 'Uncategorized' ? -1 : 1).forEach(pkgName => {
+        // Render Package Sections in that specific order
+        orderedGroups.forEach(pkgName => {
             const isUncat = pkgName === 'Uncategorized';
-            const section = createElement('div', { className: 'package-section' });
+            const section = createElement('div', { className: 'package-section', 'data-group': pkgName });
             
+            // 1. ADDED DRAG HANDLE TO THE HEADER
             const header = createElement('div', { className: 'package-header' }, [
                 createElement('div', { style: 'display:flex; align-items:center;' }, [
+                    !isUncat ? createElement('span', { className: 'material-symbols-outlined pkg-drag-handle', textContent: 'drag_indicator', style: 'cursor:grab; color:#ccc; margin-right:10px; user-select:none;' }) : null,
                     createElement('span', { className: 'package-title', textContent: pkgName, style: 'margin-right:15px;' }),
-                    // Direct Upload Button
                     createElement('button', { 
                         type: 'button',
                         className: 'package-upload-btn-label',
@@ -1106,6 +1127,7 @@ function openGalleryManager(optionId) {
                         style: 'display:none',
                         onchange: async (e) => {
                             if (e.target.files.length > 0) {
+                                syncGalleryStateFromDOM(); // Lock in drag changes before re-rendering
                                 const newUrls = await Promise.all(Array.from(e.target.files).map(f => data.uploadImage(f)));
                                 newUrls.forEach(url => {
                                     if(url) galleryImages.push({ url, group: pkgName, description: '' });
@@ -1121,6 +1143,7 @@ function openGalleryManager(optionId) {
                         onclick: () => {
                             const newName = prompt("Enter new package name:", pkgName);
                             if (newName && newName !== pkgName) {
+                                syncGalleryStateFromDOM();
                                 galleryImages.forEach(img => { if(img.group === pkgName) img.group = newName; });
                                 renderModalContent();
                             }
@@ -1130,6 +1153,7 @@ function openGalleryManager(optionId) {
                         type: 'button', className: 'btn-danger', textContent: 'Delete', style: 'padding:5px 10px; font-size:0.8rem;',
                         onclick: () => {
                             if(confirm(`Delete package "${pkgName}" and all its images?`)) {
+                                syncGalleryStateFromDOM();
                                 galleryImages = galleryImages.filter(img => img.group !== pkgName);
                                 renderModalContent();
                             }
@@ -1140,14 +1164,15 @@ function openGalleryManager(optionId) {
 
             const dropZone = createElement('div', { className: 'package-drop-zone', 'data-group': pkgName });
             
-            packages[pkgName].forEach((imgObj, idx) => {
-                // FIX: FILTER OUT PLACEHOLDERS FROM THE DROPZONE SO NO BROKEN IMAGE
+            // Render items for this package
+            const packageItems = galleryImages.filter(img => img.group === pkgName);
+            packageItems.forEach((imgObj) => {
                 if (imgObj.isPlaceholder) return;
-
                 const item = createElement('div', { className: 'modal-gallery-item', 'data-url': imgObj.url }, [
                     createElement('img', { src: imgObj.url }),
                     createElement('input', { type: 'text', placeholder: 'Description', value: imgObj.description || '', className: 'gallery-desc-input', oninput: (e) => { imgObj.description = e.target.value; } }),
                     createElement('button', { type: 'button', className: 'gallery-delete-btn', textContent: '×', onclick: () => {
+                        syncGalleryStateFromDOM();
                         galleryImages = galleryImages.filter(i => i !== imgObj);
                         renderModalContent();
                     }})
@@ -1159,7 +1184,6 @@ function openGalleryManager(optionId) {
             wrapper.append(section);
         });
 
-        // --- FIXED: ADD PACKAGE BUTTON (Standard JS) ---
         const addPkgBtn = document.createElement('button');
         addPkgBtn.type = 'button';
         addPkgBtn.textContent = '+ Add New Package';
@@ -1167,19 +1191,13 @@ function openGalleryManager(optionId) {
         addPkgBtn.style.width = '100%';
         addPkgBtn.className = 'button'; 
         
-        // Explicitly attach listener
         addPkgBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
             const name = prompt("Enter Package Name:");
             if (name) {
-                // Add placeholder to list to trigger the group creation
-                galleryImages.push({ 
-                    url: 'placeholder', 
-                    group: name, 
-                    description: '', 
-                    isPlaceholder: true 
-                });
+                syncGalleryStateFromDOM();
+                galleryImages.push({ url: 'placeholder', group: name, description: '', isPlaceholder: true });
                 renderModalContent();
             }
         });
@@ -1191,19 +1209,19 @@ function openGalleryManager(optionId) {
         form.innerHTML = '';
         form.append(wrapper);
 
-        // 6. Init Sortables for Drag & Drop
+        // 2. MAKE THE PACKAGES THEMSELVES SORTABLE
+        new Sortable(wrapper, {
+            animation: 150,
+            handle: '.pkg-drag-handle', // Only drag by the icon
+            filter: '.button', // Don't drag the "Add Package" button
+        });
+
+        // 3. Keep the inner image sortables
         const zones = wrapper.querySelectorAll('.package-drop-zone');
         zones.forEach(zone => {
             new Sortable(zone, {
-                group: 'gallery-shared', // Allow dragging between lists
-                animation: 150,
-                onEnd: (evt) => {
-                    const itemUrl = evt.item.dataset.url;
-                    const newGroup = evt.to.dataset.group;
-                    // Find image in data and update group
-                    const img = galleryImages.find(i => i.url === itemUrl);
-                    if (img) img.group = newGroup;
-                }
+                group: 'gallery-shared',
+                animation: 150
             });
         });
     };
@@ -1214,10 +1232,9 @@ function openGalleryManager(optionId) {
 
     // OVERRIDE SAVE CALLBACK
     state.modalSaveCallback = async () => {
-        // 1. Clean up placeholders before saving
+        syncGalleryStateFromDOM(); // Read the final visual order top-to-bottom
         const finalGallery = galleryImages.filter(img => !img.isPlaceholder && img.url !== 'placeholder');
 
-        // 2. Save
         await data.updateOption(optionId, { gallery_images: JSON.stringify(finalGallery) });
         await loadDataFromSupabase();
         renderAdminEditor();
