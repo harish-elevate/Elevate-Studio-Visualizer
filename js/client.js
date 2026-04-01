@@ -930,8 +930,8 @@ function openSidebarMenu(context) {
                 else if (statusObj.status === 'locked') {
                     const reqNames = statusObj.items.map(id => db.Option.find(o=>o.id===id)?.Name).join(', ');
                     const lockBtn = document.createElement('button');
-                    lockBtn.innerHTML = `<span class="material-symbols-outlined" style="font-size:16px; vertical-align:middle; margin-right:4px;">lock</span> Add to Plan`;
-                    lockBtn.style.cssText = `flex: 1; padding: 10px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; background: #999; color: white; font-size: 0.8rem;`;
+                    lockBtn.innerHTML = `<span class="material-symbols-outlined" style="font-size:16px; color:#555555; vertical-align:middle; margin-right:6px;">lock</span> Add to Plan`;
+                    lockBtn.style.cssText = `flex: 1; padding: 10px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; background: var(--primary-color); color: white; font-size: 0.8rem; display: flex; align-items: center; justify-content: center;`;
                     lockBtn.onclick = (e) => { e.stopPropagation(); triggerLogicModal(opt.id, 'req', statusObj.items.join(',')); };
                     btnContainer.appendChild(lockBtn);
                     
@@ -944,8 +944,8 @@ function openSidebarMenu(context) {
                 else if (statusObj.status === 'conflict') {
                     const confNames = statusObj.items.map(id => db.Option.find(o=>o.id===id)?.Name).join(', ');
                     const confBtn = document.createElement('button');
-                    confBtn.innerHTML = `<span class="material-symbols-outlined" style="font-size:16px; vertical-align:middle; margin-right:4px;">lock</span> Add to Plan`;
-                    confBtn.style.cssText = `flex: 1; padding: 10px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; background: #999; color: white; font-size: 0.8rem;`;
+                    confBtn.innerHTML = `<span class="material-symbols-outlined" style="font-size:16px; color:#555555; vertical-align:middle; margin-right:6px;">lock</span> Add to Plan`;
+                    confBtn.style.cssText = `flex: 1; padding: 10px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; background: var(--primary-color); color: white; font-size: 0.8rem; display: flex; align-items: center; justify-content: center;`;
                     confBtn.onclick = (e) => { e.stopPropagation(); triggerLogicModal(opt.id, 'conflict', statusObj.items.join(',')); };
                     btnContainer.appendChild(confBtn);
                     
