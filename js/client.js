@@ -1549,8 +1549,18 @@ async function generatePDFBrochure(clientName, clientEmail, clientPhone, clientC
         const pageHeight = doc.internal.pageSize.getHeight();
         const dateString = new Date().toLocaleDateString();
 
-        doc.setFont('helvetica', 'bold').setFontSize(28).setTextColor(30, 30, 30);
-        doc.text('Elevate Design + Build', pageWidth / 2, 60, { align: 'center' });
+        // 1. Fetch and inject the logo for the automated PDF
+        const logoUrl = 'https://uaaravrwirbwwthpkvwu.supabase.co/storage/v1/object/public/plans/Untitled%20design%20(77).png'; 
+        const logoBase64 = await getBase64ImageFromUrl(logoUrl);
+        
+        if (logoBase64) {
+            // Centers the logo. (X: center minus half width, Y: 30mm, Width: 80mm, Height: 32mm)
+            doc.addImage(logoBase64, 'PNG', (pageWidth / 2) - 40, 30, 80, 32); 
+        } else {
+            // Fallback just in case the image link breaks
+            doc.setFont('helvetica', 'bold').setFontSize(28).setTextColor(30, 30, 30);
+            doc.text('Elevate Design + Build', pageWidth / 2, 60, { align: 'center' });
+        }
         doc.setFont('helvetica', 'normal').setFontSize(18).setTextColor(236, 141, 68); 
         doc.text(`Model: ${modelName}`, pageWidth / 2, 80, { align: 'center' });
         doc.setDrawColor(200, 200, 200).line(40, 90, pageWidth - 40, 90);
