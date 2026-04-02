@@ -860,3 +860,96 @@ img { max-width: 100%; height: auto; display: block; }
     padding: 30px;
     min-height: 400px;
 }
+
+/* --- SYSTEM PATCH & GEAR WARNING STYLES --- */
+
+/* 1. The bold red ! mark for individual option cards */
+.missing-gear-warning {
+    color: white;
+    background-color: #dc3545;
+    font-size: 16px;
+    font-weight: bold;
+    font-family: var(--font-heading);
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    z-index: 10;
+    border: 2px solid white;
+}
+
+/* 2. The red ! mark for Option Set headers */
+.set-warning-icon {
+    color: #dc3545;
+    background: rgba(220, 53, 69, 0.1);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 14px;
+    margin-left: 10px;
+    font-weight: bold;
+    vertical-align: middle;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* 3. The greyed-out Gear button for hidden patches */
+button.btn-disabled-gear {
+    background-color: #e0e0e0 !important;
+    color: #888 !important;
+    cursor: not-allowed !important;
+    border: 1px solid #ccc !important;
+    box-shadow: none !important;
+}
+button.btn-disabled-gear:hover {
+    transform: none !important;
+}
+
+/* 4. Brand Overrides for Choices.js Dropdowns */
+.choices__inner {
+    border: 1px solid var(--border-color) !important;
+    border-radius: 4px !important;
+    background-color: #fff !important;
+    padding: 5px 10px !important;
+    font-family: var(--font-body);
+}
+.choices__list--multiple .choices__item {
+    background-color: var(--primary-color) !important;
+    border: 1px solid #d47d3c !important;
+    border-radius: 4px !important;
+    font-family: var(--font-body);
+}
+
+/* 5. Make the Choices.js typing field obvious and clickable */
+.choices[data-type*="select-multiple"] .choices__input.choices__input--cloned {
+    background-color: #f5f5f5 !important;
+    border: 1px dashed #ccc !important;
+    border-radius: 4px !important;
+    padding: 6px 10px !important;
+    margin-top: 5px !important;
+    margin-bottom: 0 !important;
+    min-width: 200px !important; /* Prevents it from shrinking too small */
+    color: var(--headings-dark) !important;
+    transition: all 0.2s ease;
+}
+
+/* Add an orange focus ring when you are actively typing */
+.choices[data-type*="select-multiple"] .choices__input.choices__input--cloned:focus {
+    background-color: #ffffff !important;
+    border-color: var(--primary-color) !important;
+    border-style: solid !important;
+    box-shadow: 0 0 0 2px rgba(236, 141, 68, 0.2) !important;
+    outline: none !important;
+}
+
+/* Make the placeholder text a bit darker so it's easier to read */
+.choices__input::placeholder {
+    color: #888 !important;
+    font-style: italic;
+}

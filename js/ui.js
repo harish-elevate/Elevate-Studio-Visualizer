@@ -69,38 +69,24 @@ export function showModal(title, fields, options = {}) {
             inputEl.style.marginTop = '10px';
             group.append(inputEl);
 
-        } else if (f.type === 'checkbox-group') {
-            group.append(label);
-            const container = createElement('div', { className: 'dependency-list-container' });
+        } else if (f.type === 'choices-multiple') {
+            group.id = `group-${f.id}`; // Add an ID so we can hide/show it dynamically
+            if (f.hidden) group.style.display = 'none';
             
-            if (!f.options || f.options.length === 0) {
-                container.textContent = "No options available in this model.";
-                container.style.color = "#999";
-                container.style.padding = "10px";
-                container.style.fontStyle = "italic";
-            } else {
-                f.options.forEach(opt => {
-                    const isChecked = f.values && f.values.includes(opt.value);
-                    const itemRow = createElement('div', { className: 'dependency-item' });
-                    
-                    const cb = createElement('input', { 
-                        type: 'checkbox', 
-                        name: f.id, 
-                        value: opt.value,
-                        id: `cb-${f.id}-${opt.value}`
-                    });
-                    if(isChecked) cb.checked = true;
-
-                    const cbLabel = createElement('label', { 
-                        textContent: opt.label, 
-                        for: `cb-${f.id}-${opt.value}` 
-                    });
-
-                    itemRow.append(cb, cbLabel);
-                    container.append(itemRow);
-                });
-            }
-            group.append(container);
+            group.append(label);
+            const selectEl = createElement('select', { 
+                id: `modal-${f.id}`, 
+                name: f.id, 
+                multiple: true 
+            });
+            
+            f.options.forEach(opt => {
+                const isSelected = f.values && f.values.includes(opt.value);
+                const optEl = createElement('option', { value: opt.value, textContent: opt.label });
+                if (isSelected) optEl.selected = true;
+                selectEl.append(optEl);
+            });
+            group.append(selectEl);
 
         } else if (f.type === 'checkbox') {
             const attributes = { id: `modal-${f.id}`, type: 'checkbox', name: f.id };
@@ -166,6 +152,28 @@ export function showModal(title, fields, options = {}) {
     if (options.modalClass) modalContent.classList.add(options.modalClass);
     getEl('modal').classList.remove('hidden');
     getEl('modalSave').classList.remove('hidden');
+
+    // --- NEW: INITIALIZE CHOICES.JS & TOGGLE LOGIC ---
+    fields.forEach(f => {
+        if (f.type === 'choices-multiple') {
+            new Choices(`#modal-${f.id}`, {
+                removeItemButton: true,
+                searchPlaceholderValue: 'Type to search...',
+                itemSelectText: 'Press to select'
+            });
+        }
+        // If this is the System Patch checkbox, make it toggle the Trigger Options field!
+        if (f.id === 'is_system_patch') {
+            const cb = getEl(`modal-${f.id}`);
+            const targetGroup = getEl('group-trigger_options');
+            if (cb && targetGroup) {
+                cb.addEventListener('change', (e) => {
+                    targetGroup.style.display = e.target.checked ? 'block' : 'none';
+                });
+            }
+        }
+    });
+    // -------------------------------------------------
 
     const firstInput = form.querySelector('input:not([type=file]), textarea, select');
     if (firstInput) {

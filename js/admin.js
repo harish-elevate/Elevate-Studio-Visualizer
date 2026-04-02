@@ -898,8 +898,16 @@ export function renderAdminEditorControls() {
             headerButtons.unshift(layerBtn);
         }
 
+        // CHECK FOR MISSING MASTER GEAR
+        const needsSetGear = (!isElevationTab && (!optionSet.icon_mode || optionSet.icon_mode === 'set_level') && optionSet.Gear_X === null);
+        
+        const headerText = createElement('h4', { textContent: optionSet.Name });
+        if (needsSetGear) {
+            headerText.innerHTML = `${optionSet.Name} <span class="material-symbols-outlined set-warning-icon" title="Missing Master Gear Icon">error</span>`;
+        }
+
         const header = createElement('div', { className: 'option-set-header' }, [
-            createElement('h4', { textContent: optionSet.Name }),
+            headerText,
             createElement('div', {className: 'option-set-header-actions' }, headerButtons)
         ]);
         
@@ -907,6 +915,10 @@ export function renderAdminEditorControls() {
         
         db.Option.filter(o => o.BelongsToOptionSet === optionSet.id).forEach(option => {
             
+            // CHECK SYSTEM PATCH & GEAR STATUS
+            const isPatch = option.is_system_patch === true;
+            const needsOptGear = !isPatch && !isElevationTab && (optionSet.icon_mode === 'option_level') && option.Gear_X === null;
+
             // EDIT OPTION DETAILS
             const editOptBtn = createElement('button', { type: 'button', className: 'btn-secondary option-edit-btn', textContent: 'Edit Details' });
             editOptBtn.addEventListener('click', () => {
@@ -914,21 +926,26 @@ export function renderAdminEditorControls() {
                 showModal('Edit Option Details', [
                     { label: 'Option Name', id: 'Name', value: option.Name },
                     { label: 'Option Code', id: 'code', value: option.code || '' },
-                    { label: 'Description (Optional)', id: 'Description', value: option.Description || '' }, // <--- NEW DESCRIPTION FIELD
+                    { label: 'Description (Optional)', id: 'Description', value: option.Description || '' },
+                    { label: 'Is System Patch (Hidden from client)', id: 'is_system_patch', type: 'checkbox', checked: isPatch },
+                    { label: 'Auto-Trigger Options (When these are active, patch appears)', id: 'trigger_options', type: 'choices-multiple', options: allOptions, values: option.trigger_options || [], hidden: !isPatch },
                     { label: 'New Thumbnail (Optional)', id: 'Thumbnail', type: 'file', existingValue: option.Thumbnail },
                     { label: 'New Overlay Image (Optional)', id: 'OptionImage', type: 'file', existingValue: option.OptionImage },
-                    { label: 'Requirements', id: 'requirements', type: 'checkbox-group', options: allOptions, values: option.requirements },
-                    { label: 'Conflicts', id: 'conflicts', type: 'checkbox-group', options: allOptions, values: option.conflicts }
+                    { label: 'Requirements', id: 'requirements', type: 'choices-multiple', options: allOptions, values: option.requirements },
+                    { label: 'Conflicts', id: 'conflicts', type: 'choices-multiple', options: allOptions, values: option.conflicts }
                 ]);
                 
                 state.modalSaveCallback = async (formData, rawForm) => {
-                    let reqs = [], confs = [];
+                    let reqs = [], confs = [], triggers = [];
                     if (rawForm instanceof FormData) {
                         reqs = rawForm.getAll('requirements').map(val => parseInt(val));
                         confs = rawForm.getAll('conflicts').map(val => parseInt(val));
+                        triggers = rawForm.getAll('trigger_options').map(val => parseInt(val));
                     }
                     await data.updateOption(option.id, {
                         ...formData,
+                        is_system_patch: !!formData.is_system_patch,
+                        trigger_options: triggers,
                         requirements: reqs,
                         conflicts: confs
                     });
@@ -965,21 +982,34 @@ export function renderAdminEditorControls() {
 
                 // ADJUST GEAR ICON (OPTION LEVEL)
                 if (optionSet.icon_mode === 'option_level') {
-                    const adjustOptGearBtn = createElement('button', { type: 'button', className: 'btn-secondary', textContent: 'Gear Settings' });
-                    adjustOptGearBtn.addEventListener('click', () => {
-                        enterGearEditMode(option.id, 'Option');
-                        window.scrollTo(0, 0);
+                    const adjustOptGearBtn = createElement('button', { 
+                        type: 'button', 
+                        className: `btn-secondary ${isPatch ? 'btn-disabled-gear' : ''}`, 
+                        textContent: isPatch ? 'Patch (No Gear Needed)' : 'Gear Settings',
+                        disabled: isPatch
                     });
+                    if (!isPatch) {
+                        adjustOptGearBtn.addEventListener('click', () => {
+                            enterGearEditMode(option.id, 'Option');
+                            window.scrollTo(0, 0);
+                        });
+                    }
                     actions.push(adjustOptGearBtn);
                 }
             }
             
             actions.push(deleteBtn);
 
+            const thumbItem = createElement('div', { className: 'option-thumbnail-item' }, [ createElement('img', { src: option.Thumbnail, alt: option.Name }) ]);
+            if (needsOptGear) {
+                thumbItem.appendChild(createElement('span', { className: 'material-symbols-outlined missing-gear-warning', title: 'Missing Gear Icon', textContent: 'error' }));
+            }
+
             const wrapper = createElement('div', { className: 'admin-thumbnail-wrapper', 'data-id': option.id }, [
-                createElement('div', { className: 'option-thumbnail-item' }, [ createElement('img', { src: option.Thumbnail, alt: option.Name }) ]),
+                thumbItem,
                 createElement('div', { className: 'admin-thumbnail-name', textContent: option.Name }),
                 createElement('div', { style: 'font-size:0.7rem; color:#666;', textContent: option.code ? `Code: ${option.code}` : '' }),
+                isPatch ? createElement('div', { style: 'font-size:0.75rem; color:var(--primary-color); font-weight:bold; margin-top:2px;' }, 'System Patch') : null,
                 createElement('div', { className: 'admin-thumbnail-actions' }, actions)
             ]);
             
@@ -1006,23 +1036,28 @@ export function renderAdminEditorControls() {
             showModal('Create New Option', [
                 { label: 'Option Name', id: 'Name' }, 
                 { label: 'Option Code (Optional)', id: 'code' },
-                { label: 'Description (Optional)', id: 'Description' }, // <--- NEW DESCRIPTION FIELD
+                { label: 'Description (Optional)', id: 'Description' },
+                { label: 'Is System Patch (Hidden from client)', id: 'is_system_patch', type: 'checkbox', checked: false },
+                { label: 'Auto-Trigger Options', id: 'trigger_options', type: 'choices-multiple', options: allOptions, hidden: true },
                 { label: 'Thumbnail Image (4:3 recommended)', id: 'Thumbnail', type: 'file' }, 
                 { label: 'Main Overlay Image', id: 'OptionImage', type: 'file' },
-                { label: 'Requirements (Must have one of these)', id: 'requirements', type: 'checkbox-group', options: allOptions },
-                { label: 'Conflicts (Cannot select if one of these is active)', id: 'conflicts', type: 'checkbox-group', options: allOptions }
+                { label: 'Requirements (Must have one of these)', id: 'requirements', type: 'choices-multiple', options: allOptions },
+                { label: 'Conflicts (Cannot select if one of these is active)', id: 'conflicts', type: 'choices-multiple', options: allOptions }
             ]);
             
             state.modalSaveCallback = async (formData, rawForm) => {
-                let reqs = [], confs = [];
+                let reqs = [], confs = [], triggers = [];
                 if (rawForm instanceof FormData) {
                     reqs = rawForm.getAll('requirements').map(val => parseInt(val));
                     confs = rawForm.getAll('conflicts').map(val => parseInt(val));
+                    triggers = rawForm.getAll('trigger_options').map(val => parseInt(val));
                 }
 
                 if (formData.Name && formData.Thumbnail && formData.OptionImage) { 
                     const newOpt = {
                         ...formData,
+                        is_system_patch: !!formData.is_system_patch,
+                        trigger_options: triggers,
                         requirements: reqs,
                         conflicts: confs,
                         BelongsToOptionSet: optionSet.id,
