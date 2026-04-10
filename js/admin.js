@@ -1184,6 +1184,7 @@ export function renderAdminEditorControls() {
 }
 
 // --- GALLERY MANAGER (UPDATED: DRAGGABLE PACKAGES) ---
+// --- GALLERY MANAGER (UPDATED: DRAGGABLE PACKAGES & FIXED EVENTS) ---
 function openGalleryManager(optionId) {
     const option = db.Option.find(o => o.id === optionId);
     let galleryImages = [];
@@ -1212,8 +1213,9 @@ function openGalleryManager(optionId) {
                 newState.push({ url: 'placeholder', group: groupName, description: '', isPlaceholder: true });
             } else {
                 items.forEach(item => {
-                    const url = item.dataset.url;
-                    const desc = item.querySelector('.gallery-desc-input').value;
+                    const url = item.getAttribute('data-url');
+                    const descInput = item.querySelector('.gallery-desc-input');
+                    const desc = descInput ? descInput.value : '';
                     newState.push({ url, group: groupName, description: desc });
                 });
             }
@@ -1237,76 +1239,90 @@ function openGalleryManager(optionId) {
             const isUncat = pkgName === 'Uncategorized';
             const section = createElement('div', { className: 'package-section', 'data-group': pkgName });
             
-            // 1. ADDED DRAG HANDLE TO THE HEADER
-            const header = createElement('div', { className: 'package-header' }, [
-                createElement('div', { style: 'display:flex; align-items:center;' }, [
-                    !isUncat ? createElement('span', { className: 'material-symbols-outlined pkg-drag-handle', textContent: 'drag_indicator', style: 'cursor:grab; color:#ccc; margin-right:10px; user-select:none;' }) : null,
-                    createElement('span', { className: 'package-title', textContent: pkgName, style: 'margin-right:15px;' }),
-                    createElement('button', { 
-                        type: 'button',
-                        className: 'package-upload-btn-label',
-                        textContent: '+ Upload Here',
-                        onclick: () => {
-                            const input = section.querySelector('.hidden-pkg-input');
-                            if(input) input.click();
-                        }
-                    }),
-                    createElement('input', { 
-                        type: 'file', 
-                        className: 'hidden-pkg-input',
-                        multiple: true, 
-                        style: 'display:none',
-                        onchange: async (e) => {
-                            if (e.target.files.length > 0) {
-                                syncGalleryStateFromDOM(); // Lock in drag changes before re-rendering
-                                const newUrls = await Promise.all(Array.from(e.target.files).map(f => data.uploadImage(f)));
-                                newUrls.forEach(url => {
-                                    if(url) galleryImages.push({ url, group: pkgName, description: '' });
-                                });
-                                renderModalContent();
-                            }
-                        }
-                    })
-                ]),
-                createElement('div', {}, [
-                    !isUncat ? createElement('button', { 
-                        type: 'button', className: 'btn-secondary', textContent: 'Rename', style: 'padding:5px 10px; font-size:0.8rem; margin-right:5px;',
-                        onclick: () => {
-                            const newName = prompt("Enter new package name:", pkgName);
-                            if (newName && newName !== pkgName) {
-                                syncGalleryStateFromDOM();
-                                galleryImages.forEach(img => { if(img.group === pkgName) img.group = newName; });
-                                renderModalContent();
-                            }
-                        }
-                    }) : null,
-                    !isUncat ? createElement('button', { 
-                        type: 'button', className: 'btn-danger', textContent: 'Delete', style: 'padding:5px 10px; font-size:0.8rem;',
-                        onclick: () => {
-                            if(confirm(`Delete package "${pkgName}" and all its images?`)) {
-                                syncGalleryStateFromDOM();
-                                galleryImages = galleryImages.filter(img => img.group !== pkgName);
-                                renderModalContent();
-                            }
-                        }
-                    }) : null
-                ])
-            ]);
+            // --- FIX 1: PROPERLY WIRE UPLOAD EVENTS ---
+            const uploadBtn = createElement('button', { type: 'button', className: 'package-upload-btn-label', textContent: '+ Upload Here' });
+            const fileInput = createElement('input', { type: 'file', className: 'hidden-pkg-input', multiple: 'true', style: 'display:none' });
+            
+            uploadBtn.addEventListener('click', () => fileInput.click());
+            // --- FIX 1: BULLETPROOF UPLOAD EVENTS ---
+            fileInput.addEventListener('change', async (e) => {
+                if (e.target.files.length > 0) {
+                    syncGalleryStateFromDOM(); // Lock in drag changes before re-rendering
+                    
+                    // Show visual feedback so you know it didn't freeze
+                    uploadBtn.textContent = 'Uploading...';
+                    uploadBtn.disabled = true;
+                    uploadBtn.style.opacity = '0.7';
 
+                    try {
+                        // We verified data.uploadImage is your correct function name
+                        const newUrls = await Promise.all(Array.from(e.target.files).map(f => data.uploadImage(f)));
+                        newUrls.forEach(url => {
+                            if(url) galleryImages.push({ url, group: pkgName, description: '' });
+                        });
+                    } catch (err) {
+                        console.error("Upload failed:", err);
+                        alert("Failed to upload the image. Check console for details.");
+                    }
+
+                    renderModalContent(); // Instantly redraws the modal to show your new image!
+                }
+            });
+
+            // --- FIX 2: PROPERLY WIRE HEADER BUTTONS ---
+            const headerActions = [];
+            if (!isUncat) {
+                const renameBtn = createElement('button', { type: 'button', className: 'btn-secondary', textContent: 'Rename', style: 'padding:5px 10px; font-size:0.8rem; margin-right:5px;' });
+                renameBtn.addEventListener('click', () => {
+                    const newName = prompt("Enter new package name:", pkgName);
+                    if (newName && newName !== pkgName) {
+                        syncGalleryStateFromDOM();
+                        galleryImages.forEach(img => { if(img.group === pkgName) img.group = newName; });
+                        renderModalContent();
+                    }
+                });
+
+                const deleteBtn = createElement('button', { type: 'button', className: 'btn-danger', textContent: 'Delete', style: 'padding:5px 10px; font-size:0.8rem;' });
+                deleteBtn.addEventListener('click', () => {
+                    if(confirm(`Delete package "${pkgName}" and all its images?`)) {
+                        syncGalleryStateFromDOM();
+                        galleryImages = galleryImages.filter(img => img.group !== pkgName);
+                        renderModalContent();
+                    }
+                });
+                headerActions.push(renameBtn, deleteBtn);
+            }
+
+            const dragHandle = !isUncat ? createElement('span', { className: 'material-symbols-outlined pkg-drag-handle', textContent: 'drag_indicator', style: 'cursor:grab; color:#ccc; margin-right:10px; user-select:none;' }) : null;
+            const pkgTitle = createElement('span', { className: 'package-title', textContent: pkgName, style: 'margin-right:15px;' });
+
+            const headerLeftElems = dragHandle ? [dragHandle, pkgTitle, uploadBtn, fileInput] : [pkgTitle, uploadBtn, fileInput];
+            const headerLeft = createElement('div', { style: 'display:flex; align-items:center;' }, headerLeftElems);
+            const headerRight = createElement('div', {}, headerActions);
+
+            const header = createElement('div', { className: 'package-header' }, [headerLeft, headerRight]);
             const dropZone = createElement('div', { className: 'package-drop-zone', 'data-group': pkgName });
             
             // Render items for this package
             const packageItems = galleryImages.filter(img => img.group === pkgName);
             packageItems.forEach((imgObj) => {
                 if (imgObj.isPlaceholder) return;
+                
+                // --- FIX 3: PROPERLY WIRE ITEM INPUTS & BUTTONS ---
+                const descInput = createElement('input', { type: 'text', placeholder: 'Description', value: imgObj.description || '', className: 'gallery-desc-input' });
+                descInput.addEventListener('input', (e) => { imgObj.description = e.target.value; });
+
+                const delBtn = createElement('button', { type: 'button', className: 'gallery-delete-btn', textContent: '×' });
+                delBtn.addEventListener('click', () => {
+                    syncGalleryStateFromDOM();
+                    galleryImages = galleryImages.filter(i => i !== imgObj);
+                    renderModalContent();
+                });
+
                 const item = createElement('div', { className: 'modal-gallery-item', 'data-url': imgObj.url }, [
                     createElement('img', { src: imgObj.url }),
-                    createElement('input', { type: 'text', placeholder: 'Description', value: imgObj.description || '', className: 'gallery-desc-input', oninput: (e) => { imgObj.description = e.target.value; } }),
-                    createElement('button', { type: 'button', className: 'gallery-delete-btn', textContent: '×', onclick: () => {
-                        syncGalleryStateFromDOM();
-                        galleryImages = galleryImages.filter(i => i !== imgObj);
-                        renderModalContent();
-                    }})
+                    descInput,
+                    delBtn
                 ]);
                 dropZone.append(item);
             });
@@ -1315,13 +1331,8 @@ function openGalleryManager(optionId) {
             wrapper.append(section);
         });
 
-        const addPkgBtn = document.createElement('button');
-        addPkgBtn.type = 'button';
-        addPkgBtn.textContent = '+ Add New Package';
-        addPkgBtn.style.marginTop = '10px';
-        addPkgBtn.style.width = '100%';
-        addPkgBtn.className = 'button'; 
-        
+        // --- FIX 4: ADD PACKAGE BUTTON STYLING & EVENT ---
+        const addPkgBtn = createElement('button', { type: 'button', className: 'btn-primary', textContent: '+ Add New Package', style: 'margin-top: 10px; width: 100%;' });
         addPkgBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -1340,14 +1351,14 @@ function openGalleryManager(optionId) {
         form.innerHTML = '';
         form.append(wrapper);
 
-        // 2. MAKE THE PACKAGES THEMSELVES SORTABLE
+        // MAKE THE PACKAGES THEMSELVES SORTABLE
         new Sortable(wrapper, {
             animation: 150,
             handle: '.pkg-drag-handle', // Only drag by the icon
-            filter: '.button', // Don't drag the "Add Package" button
+            filter: '.btn-primary', // Exclude the new package button from being dragged
         });
 
-        // 3. Keep the inner image sortables
+        // Keep the inner image sortables
         const zones = wrapper.querySelectorAll('.package-drop-zone');
         zones.forEach(zone => {
             new Sortable(zone, {
@@ -1364,7 +1375,9 @@ function openGalleryManager(optionId) {
     // OVERRIDE SAVE CALLBACK
     state.modalSaveCallback = async () => {
         syncGalleryStateFromDOM(); // Read the final visual order top-to-bottom
-        const finalGallery = galleryImages.filter(img => !img.isPlaceholder && img.url !== 'placeholder');
+        
+        // DO NOT filter out placeholders! Keep them so empty packages survive the save process.
+        const finalGallery = galleryImages; 
 
         await data.updateOption(optionId, { gallery_images: JSON.stringify(finalGallery) });
         await loadDataFromSupabase();
