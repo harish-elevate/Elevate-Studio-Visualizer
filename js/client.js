@@ -397,6 +397,46 @@ function getCollateralDamage(optId, found = new Set()) {
     return Array.from(found).map(id => db.Option.find(o => o.id === id));
 }
 
+// --- NEW: THE Z-INDEX ENFORCER ---
+function enforceLayerOrder() {
+    if (!clientCanvas) return;
+    
+    const objects = clientCanvas.getObjects();
+    
+    objects.sort((a, b) => {
+        // 1. Gears and Hotspots ALWAYS stay on the absolute top
+        if (a.data && a.data.isGear) return 1;
+        if (b.data && b.data.isGear) return -1;
+        
+        // 2. Ignore non-option objects (send them to bottom)
+        if (!a.data || !a.data.id) return -1;
+        if (!b.data || !b.data.id) return 1;
+
+        // 3. Find the options in the database
+        const optA = db.Option.find(o => o.id === a.data.id);
+        const optB = db.Option.find(o => o.id === b.data.id);
+        
+        if (!optA || !optB) return 0;
+
+        // 4. Check the Admin Panel sorting positions!
+        const setA = db.OptionSet.find(s => s.id === optA.BelongsToOptionSet);
+        const setB = db.OptionSet.find(s => s.id === optB.BelongsToOptionSet);
+
+        const posA = setA ? setA.position : 0;
+        const posB = setB ? setB.position : 0;
+
+        // 5. Sort by Set Position first, then individual Option Position
+        if (posA === posB) {
+            return (optA.position || 0) - (optB.position || 0);
+        }
+        return posA - posB;
+    });
+
+    // Re-stack everything on the canvas in the perfect mathematical order
+    objects.forEach(obj => clientCanvas.bringToFront(obj));
+    clientCanvas.requestRenderAll();
+}
+
 async function diffAndRenderCanvas(floorData, bgMetrics) {
     const isElevation = floorData.Name.toLowerCase().includes('elevation') || floorData.Name.toLowerCase().includes('exterior');
     const optionSets = db.OptionSet.filter(os => os.BelongsToFloor === floorData.id);
@@ -435,7 +475,6 @@ async function diffAndRenderCanvas(floorData, bgMetrics) {
                         scaleY = bgMetrics.height / (img.height || 1);
                     }
 
-                    // Extract layer order (Prioritize layer_order, fallback to position, fallback to 0)
                     const layerVal = option.layer_order !== null && option.layer_order !== undefined 
                         ? option.layer_order 
                         : (option.position || 0);
@@ -452,18 +491,20 @@ async function diffAndRenderCanvas(floorData, bgMetrics) {
         }
     }
     
-    // 3. THE FIX: Official Fabric.js Z-Index Stacking (INVERTED!)
+    // 3. THE REAL FIX: Safe Z-Index Stacking
     const overlays = clientCanvas.getObjects().filter(o => o.data && o.data.isOverlay);
     
-    // Sort them so highest numbers go to the back, lowest numbers (1) go to the front
+    // Sort so highest numbers (bottom layers) are FIRST in the array
     overlays.sort((a, b) => {
         const valA = Number(a.data.layerOrder) || 0;
         const valB = Number(b.data.layerOrder) || 0;
-        return valB - valA; // <--- The magic flip
+        return valB - valA; 
     });
 
-    overlays.forEach((obj, index) => {
-        clientCanvas.moveTo(obj, index);
+    // Instead of absolute moveTo (which breaks the background), we just pull them to the front sequentially.
+    // The highest numbers get pulled first. The lowest numbers (Layer 1) get pulled last, leaving them on top!
+    overlays.forEach(obj => {
+        clientCanvas.bringToFront(obj);
     });
 
     // 4. Quickly redraw the gears so they reflect prerequisite changes and stay on absolute top
