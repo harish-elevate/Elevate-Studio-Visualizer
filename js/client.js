@@ -248,6 +248,16 @@ function renderClientCanvas(floorData) {
                 
                 // If they released the mouse but NEVER moved, it was just a click!
                 if (!hasMoved) {
+                    // 1. Check if we are currently on an Elevation tab
+                    const currentFloor = wizardSteps[currentStepIndex];
+                    const isElevationTab = currentFloor && currentFloor.Name && (currentFloor.Name.toLowerCase().includes('elevation') || currentFloor.Name.toLowerCase().includes('exterior'));
+
+                    // 2. If it is an elevation, DO NOTHING. Let them keep panning.
+                    if (isElevationTab) {
+                        return;
+                    }
+
+                    // 3. Otherwise, it's a normal floor plan: hide the menu and show the default message
                     hide('customizerOptionSets');
                     show('sidebarDefaultMessage');
                     currentActiveSidebarContext = null;
