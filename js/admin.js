@@ -320,6 +320,55 @@ function setupAdminFabricListeners() {
         opt.e.preventDefault(); 
         opt.e.stopPropagation();
     });
+
+    // --- NEW: BULLETPROOF DYNAMIC CROP BUTTON ---
+    // 1. Create the button dynamically if it doesn't exist
+    let cropBtn = document.getElementById('dynamicCropBtn');
+    if (!cropBtn) {
+        cropBtn = document.createElement('button');
+        cropBtn.id = 'dynamicCropBtn';
+        cropBtn.className = 'btn-primary';
+        cropBtn.innerHTML = '<span class="material-symbols-outlined" style="vertical-align: middle; margin-right: 5px;">crop</span> Crop Selected Image';
+        
+        // Aggressive CSS to guarantee it floats over EVERYTHING
+        cropBtn.style.cssText = 'position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); z-index: 2147483647; display: none; padding: 12px 24px; font-size: 16px; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border-radius: 8px; cursor: pointer;';
+        
+        document.body.appendChild(cropBtn);
+    }
+
+    // 2. Wire up the Canvas Listeners
+    adminFabricCanvas.on('selection:created', function(e) {
+        if (e.selected && e.selected.length === 1 && e.selected[0].type === 'image') {
+            cropBtn.style.display = 'block'; // Show button
+        }
+    });
+
+    adminFabricCanvas.on('selection:cleared', function() {
+        cropBtn.style.display = 'none'; // Hide button
+    });
+
+    adminFabricCanvas.on('selection:updated', function(e) {
+        if (e.selected && e.selected.length === 1 && e.selected[0].type === 'image') {
+            cropBtn.style.display = 'block';
+        } else {
+            cropBtn.style.display = 'none';
+        }
+    });
+
+    // 3. The Crop Action
+    // Clone the button to wipe out any old event listeners so it doesn't double-fire
+    const newCropBtn = cropBtn.cloneNode(true);
+    cropBtn.parentNode.replaceChild(newCropBtn, cropBtn);
+    
+    newCropBtn.addEventListener('click', () => {
+        const activeObj = adminFabricCanvas.getActiveObject();
+        if (activeObj && activeObj.type === 'image' && activeObj.data && activeObj.data.id) {
+            const option = db.Option.find(o => o.id === activeObj.data.id);
+            if (option) {
+                handleOptionImageCrop(option); // Launches the cropper!
+            }
+        }
+    });
 }
 
 function handleAdminZoom(factor) {
@@ -362,7 +411,7 @@ export function enterPositionEditMode(optionId, renderControls = true) {
             }
         });
 
-        // --- FIXED SAVE BUTTON (Closure Logic) ---
+        // --- THE 3 CONTROL BUTTONS ---
         const saveBtn = createElement('button', { 
             type: 'button', 
             id: 'savePosBtn', 
@@ -370,6 +419,14 @@ export function enterPositionEditMode(optionId, renderControls = true) {
             style: 'flex:1;' 
         });
         
+        // NEW: The Native Crop Button!
+        const cropBtn = createElement('button', { 
+            type: 'button', 
+            id: 'cropPosBtn', 
+            textContent: 'Crop', 
+            style: 'flex:1; background-color: #17a2b8; color: white;' // A nice teal to distinguish it from save/cancel
+        });
+
         const cancelBtn = createElement('button', { 
             type: 'button', 
             id: 'cancelPosBtn', 
@@ -378,10 +435,10 @@ export function enterPositionEditMode(optionId, renderControls = true) {
             style: 'flex:1;' 
         });
 
+        // --- BUTTON LISTENERS ---
         saveBtn.addEventListener('click', async () => {
             if (!adminFabricCanvas || !adminFabricCanvas.bgMetrics) return;
             
-            // Find object by ID (Reliable)
             const objects = adminFabricCanvas.getObjects();
             const target = objects.find(o => o.data && o.data.id === optionId);
             
@@ -411,7 +468,6 @@ export function enterPositionEditMode(optionId, renderControls = true) {
                     Height: hPct 
                 });
                 
-                // Update Local Store
                 const localOption = db.Option.find(o => o.id === optionId);
                 if(localOption) { 
                     localOption.X_Position = xPct; 
@@ -428,6 +484,17 @@ export function enterPositionEditMode(optionId, renderControls = true) {
             }
         });
 
+        // NEW: Wire the crop button directly to your cropper function
+        cropBtn.addEventListener('click', () => {
+            // Check if your crop function exists, and trigger it
+            if (typeof handleOptionImageCrop === 'function') {
+                handleOptionImageCrop(option);
+            } else {
+                console.log("Preparing to crop:", option.Name);
+                alert("Crop function triggered. If the cropper doesn't open, verify your crop function name!");
+            }
+        });
+
         cancelBtn.addEventListener('click', () => {
             exitPositionEditMode();
         });
@@ -436,11 +503,11 @@ export function enterPositionEditMode(optionId, renderControls = true) {
             createElement('h4', { textContent: `Editing: ${option.Name}`, style: 'margin-bottom:10px; color: var(--primary-color);' }),
             createElement('p', { textContent: 'Drag to move. Drag corners to resize.', style: 'font-size:0.9rem; color:#666; margin-bottom:15px;' }),
             opacityContainer,
-            createElement('div', { style: 'display:flex; gap:10px;' }, [ saveBtn, cancelBtn ])
+            createElement('div', { style: 'display:flex; gap:5px;' }, [ saveBtn, cropBtn, cancelBtn ]) // Placed cleanly in a row
         );
         controls.classList.remove('hidden');
         
-        getEl('adminEditor').querySelector('.controls-column').querySelectorAll('button:not(#savePosBtn):not(#cancelPosBtn), a').forEach(el => { 
+        getEl('adminEditor').querySelector('.controls-column').querySelectorAll('button:not(#savePosBtn):not(#cropPosBtn):not(#cancelPosBtn), a').forEach(el => { 
             el.disabled = true; 
             el.style.opacity = '0.5'; 
         });
@@ -464,6 +531,7 @@ export function enterPositionEditMode(optionId, renderControls = true) {
                 transparentCorners: false 
             });
             adminFabricCanvas.setActiveObject(target);
+            adminFabricCanvas.bringToFront(target); // NEW: Forces it perfectly to the top
             adminFabricCanvas.renderAll();
         }
     }
@@ -841,33 +909,59 @@ export function renderAdminEditorControls() {
         const isOpen = state.openOptionSets.has(optionSet.id);
         
         // EDIT OPTION SET
-        const editSetBtn = createElement('button', { type: 'button', className: 'btn-secondary optionset-edit-btn', textContent: 'Edit' });
+        const editSetBtn = createElement('button', { type: 'button', className: 'btn-secondary', textContent: 'Edit Set' });
         editSetBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            const set = db.OptionSet.find(s => s.id === optionSet.id);
             showModal('Edit Option Set', [
-                { label: 'Set Name', id: 'Name', value: set.Name },
-                { label: 'Allow Multiple Selections', id: 'allow_multiple_selections', type: 'checkbox', checked: set.allow_multiple_selections },
-                { label: 'Gear Icon Mode', id: 'icon_mode', type: 'select', options: [
-                    { value: 'set_level', label: 'Single Icon for Whole Set' },
-                    { value: 'option_level', label: 'Individual Icon for Each Option' }
-                ], value: set.icon_mode || 'set_level' }
-            ]);
-            state.modalSaveCallback = async (formData) => {
-                if(formData.Name) {
-                    await data.updateOptionSet(optionSet.id, { 
-                        Name: formData.Name, 
-                        allow_multiple_selections: !!formData.allow_multiple_selections,
-                        icon_mode: formData.icon_mode
-                    });
-                    await loadDataFromSupabase();
-                    renderAdminEditor();
-                    hideModal();
+                { label: 'Set Name', id: 'Name', value: optionSet.Name },
+                { label: 'Code', id: 'code', value: optionSet.code || '' },
+                { label: 'Category', id: 'category', type: 'select', value: optionSet.category, options: [
+                    { value: 'Structural', label: 'Structural' },
+                    { value: 'Exterior', label: 'Exterior' },
+                    { value: 'Interior', label: 'Interior' }
+                ]},
+                { label: 'Sort Order', id: 'position', type: 'number', value: optionSet.position },
+                { label: 'Allow Multiple Selections?', id: 'allow_multiple', type: 'checkbox', checked: optionSet.allow_multiple },
+                { label: 'Selection Required?', id: 'is_required', type: 'checkbox', checked: optionSet.is_required },
+                { label: 'Icon / Hotspot Mode', id: 'icon_mode', type: 'select', value: optionSet.icon_mode || 'option_level', options: [
+                    { value: 'option_level', label: 'Individual Gear for Each Option' },
+                    { value: 'set_level', label: 'Single Gear for Whole Set' },
+                    { value: 'hidden', label: 'Hidden (No Gear)' }
+                ]}
+            ], {
+                // --- NEW: THE DANGER ZONE (Places the delete button at the bottom of the modal) ---
+                dangerZone: {
+                    buttonText: 'Delete Set',
+                    callback: () => {
+                        if (confirm(`Are you absolutely sure you want to delete the "${optionSet.Name}" set?\n\nWARNING: You must manually delete all individual options inside this set FIRST.`)) {
+                            data.deleteOptionSet(optionSet.id).then(async () => {
+                                await loadDataFromSupabase();
+                                renderAdminEditor();
+                                hideModal(); // Close the modal on success
+                            }).catch(err => {
+                                console.error("Deletion failed:", err);
+                                alert("Failed to delete set. Ensure ALL options inside this set are deleted first!");
+                            });
+                        }
+                    }
                 }
+            });
+            
+            state.modalSaveCallback = async (formData) => {
+                await data.updateOptionSet(optionSet.id, {
+                    ...formData,
+                    position: parseInt(formData.position) || 0,
+                    allow_multiple: !!formData.allow_multiple,
+                    is_required: !!formData.is_required
+                });
+                await loadDataFromSupabase();
+                renderAdminEditor();
+                hideModal();
             };
         });
 
-        const headerButtons = [ editSetBtn ];
+
+        const headerButtons = [ editSetBtn ]; // <--- We add the new button here!
 
         // ADJUST GEAR ICON (SET LEVEL)
         if (!isElevationTab && (!optionSet.icon_mode || optionSet.icon_mode === 'set_level')) {

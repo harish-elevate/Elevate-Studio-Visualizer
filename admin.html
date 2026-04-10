@@ -183,7 +183,12 @@
                             <span>Zoom:</span> <button type="button" id="adminZoomInBtn">+</button> <button type="button" id="adminZoomOutBtn">-</button> <button type="button" id="adminZoomResetBtn" class="btn-secondary">Reset</button>
                         </div>
                     </div>
-                    <div class="canvas-wrapper"><div id="adminCanvasContainer" class="canvas-container"></div></div>
+                    <div class="canvas-wrapper" style="position: relative;">
+                        <div id="adminCanvasContainer" class="canvas-container"></div>
+                        <button id="cropSelectedBtn" class="btn-primary hidden" style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 1000; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+                            <span class="material-symbols-outlined" style="vertical-align: middle; margin-right: 5px;">crop</span> Crop Selected Image
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

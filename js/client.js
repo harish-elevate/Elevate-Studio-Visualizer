@@ -550,6 +550,8 @@ window.triggerLogicModal = (targetOptId, type, itemIdsString) => {
         }
 
         // Redraw canvas and sidebar
+        evaluateSystemPatches(); // <-- NEW: Check for patches!
+        
         renderClientCanvas(floorData);
         openSidebarMenu(currentActiveSidebarContext); 
         hide('modal');
@@ -687,7 +689,7 @@ function renderGearIcons(floorData, bgMetrics) {
     });
 
     // MAP OPTION-LEVEL HOTSPOTS (and check if they are selected)
-    const floorOptions = db.Option.filter(o => floorSets.map(s => s.id).includes(o.BelongsToOptionSet) && o.Gear_X !== null);
+    const floorOptions = db.Option.filter(o => floorSets.map(s => s.id).includes(o.BelongsToOptionSet) && o.Gear_X !== null && !o.is_system_patch);
     
     floorOptions.forEach(opt => {
         
@@ -847,6 +849,8 @@ function openSidebarMenu(context) {
         grid.style.cssText = `display: grid; grid-template-columns: ${isElevation ? '1fr 1fr' : '1fr'}; gap: 15px; margin-bottom: 30px;`;
 
         options.forEach(opt => {
+            if (opt.is_system_patch) return; // <-- NEW: Completely hides patches from the sidebar!
+
             const isSelected = (state.customizerSelections[set.id] || []).includes(opt.id);
             const card = document.createElement('div');
             
@@ -975,6 +979,35 @@ function openSidebarMenu(context) {
     show('customizerOptionSets');
 }
 
+// --- NEW GHOST RENDERER ENGINE ---
+function evaluateSystemPatches() {
+    const patches = db.Option.filter(o => o.is_system_patch);
+
+    patches.forEach(patch => {
+        if (!patch.trigger_options || patch.trigger_options.length === 0) return;
+
+        // Flatten all current selections to easily check what's active
+        const allSelectedIds = Object.values(state.customizerSelections).flat();
+        
+        const allTriggersActive = patch.trigger_options.every(triggerId => allSelectedIds.includes(triggerId));
+        const patchIsCurrentlyOn = allSelectedIds.includes(patch.id);
+        const patchSetId = patch.BelongsToOptionSet;
+
+        if (allTriggersActive && !patchIsCurrentlyOn) {
+            // TURN IT ON: Triggers met, drop the patch into memory
+            if (!state.customizerSelections[patchSetId]) state.customizerSelections[patchSetId] = [];
+            if (!state.customizerSelections[patchSetId].includes(patch.id)) {
+                state.customizerSelections[patchSetId].push(patch.id);
+            }
+        } else if (!allTriggersActive && patchIsCurrentlyOn) {
+            // TURN IT OFF: Triggers lost, rip it out of memory
+            if (state.customizerSelections[patchSetId]) {
+                state.customizerSelections[patchSetId] = state.customizerSelections[patchSetId].filter(id => id !== patch.id);
+            }
+        }
+    });
+}
+
 function handleOptionClick(opt, set) {
     const floorData = wizardSteps[currentStepIndex];
     const isElevation = floorData.Name.toLowerCase().includes('elevation') || floorData.Name.toLowerCase().includes('exterior');
@@ -1024,6 +1057,8 @@ function handleOptionClick(opt, set) {
         }
     }
 
+    evaluateSystemPatches(); // <-- NEW: Check for patches before rendering!
+    
     renderClientCanvas(floorData); 
     openSidebarMenu(currentActiveSidebarContext);
 }
