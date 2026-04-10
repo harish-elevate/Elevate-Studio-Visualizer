@@ -609,17 +609,51 @@ window.triggerCollateralModal = (targetOpt, collateralItems, actionType, set) =>
     newSaveBtn.style.cssText = `padding: 10px 20px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; color: white; background: #f44336;`;
 
     newSaveBtn.onclick = () => {
-        // 1. Silently remove all collateral damage first
-        collateralItems.forEach(coll => {
-            const collSet = db.OptionSet.find(s => s.id === coll.BelongsToOptionSet);
-            if (state.customizerSelections[collSet.id]) {
-                state.customizerSelections[collSet.id] = state.customizerSelections[collSet.id].filter(id => id !== coll.id);
-                if (state.customizerSelections['gallery_picks']) delete state.customizerSelections['gallery_picks'][coll.id];
-            }
-        });
+        // 1. Create the Master Hit-List
+        const idsToRemove = collateralItems.map(c => c.id);
         
-        // 2. Execute the original action (This handles re-rendering the canvas!)
-        handleOptionClick(targetOpt, set);
+        // If they clicked "Remove All", add the main target to the hit-list
+        if (actionType === 'remove') {
+            idsToRemove.push(targetOpt.id);
+        }
+
+        // 2. Batch Remove everything simultaneously across all folders
+        Object.keys(state.customizerSelections).forEach(setId => {
+            if (setId === 'gallery_picks') return;
+            
+            // Filter out the hit-list
+            state.customizerSelections[setId] = state.customizerSelections[setId].filter(
+                savedId => !idsToRemove.includes(savedId)
+            );
+            
+            // Clean up gallery picks
+            idsToRemove.forEach(id => {
+                if (state.customizerSelections['gallery_picks']) {
+                    delete state.customizerSelections['gallery_picks'][id];
+                }
+            });
+        });
+
+        // 3. If it's a Swap, add the new target option safely now that memory is clean
+        if (actionType === 'swap') {
+            if (!state.customizerSelections[set.id]) state.customizerSelections[set.id] = [];
+            if (!set.allow_multiple_selections) {
+                state.customizerSelections[set.id] = [targetOpt.id];
+            } else {
+                if (!state.customizerSelections[set.id].includes(targetOpt.id)) {
+                    state.customizerSelections[set.id].push(targetOpt.id);
+                }
+            }
+        }
+
+        // 4. WAKE THE GHOST ENGINE
+        // Memory is perfectly updated. Let the engine check if patches need to adapt.
+        evaluateSystemPatches();
+
+        // 5. Redraw the world
+        const floorData = wizardSteps[currentStepIndex];
+        renderClientCanvas(floorData);
+        openSidebarMenu(currentActiveSidebarContext);
         hide('modal');
     };
 
