@@ -1021,6 +1021,7 @@ export function renderAdminEditorControls() {
                     { label: 'Option Name', id: 'Name', value: option.Name },
                     { label: 'Option Code', id: 'code', value: option.code || '' },
                     { label: 'Description (Optional)', id: 'Description', value: option.Description || '' },
+                    { label: 'Is Default (Standard Feature)?', id: 'is_default', type: 'checkbox', checked: option.is_default },
                     { label: 'Is System Patch (Hidden from client)', id: 'is_system_patch', type: 'checkbox', checked: isPatch },
                     { label: 'Auto-Trigger Options (When these are active, patch appears)', id: 'trigger_options', type: 'choices-multiple', options: allOptions, values: option.trigger_options || [], hidden: !isPatch },
                     { label: 'New Thumbnail (Optional)', id: 'Thumbnail', type: 'file', existingValue: option.Thumbnail },
@@ -1038,6 +1039,7 @@ export function renderAdminEditorControls() {
                     }
                     await data.updateOption(option.id, {
                         ...formData,
+                        is_default: !!formData.is_default,
                         is_system_patch: !!formData.is_system_patch,
                         trigger_options: triggers,
                         requirements: reqs,

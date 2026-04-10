@@ -18,6 +18,17 @@ let currentStepIndex = 0;
 async function initializeClientApp() {
     getEl('globalLoader').classList.remove('hidden');
     await loadDataFromSupabase();
+    
+    // --- NEW: INJECT DEFAULT OPTIONS INTO MEMORY ---
+    db.Option.filter(o => o.is_default).forEach(opt => {
+        const setId = opt.BelongsToOptionSet;
+        // If the folder for this option set doesn't exist yet, create it and drop the default in!
+        if (!state.customizerSelections[setId]) {
+            state.customizerSelections[setId] = [opt.id];
+        }
+    });
+    // -----------------------------------------------
+    
     renderLandingPage();
     getEl('globalLoader').classList.add('hidden');
 }
@@ -773,8 +784,8 @@ function renderGearIcons(floorData, bgMetrics) {
         }
     });
 
-    // MAP OPTION-LEVEL HOTSPOTS (and check if they are selected)
-    const floorOptions = db.Option.filter(o => floorSets.map(s => s.id).includes(o.BelongsToOptionSet) && o.Gear_X !== null && !o.is_system_patch);
+    // MAP OPTION-LEVEL HOTSPOTS 
+    const floorOptions = db.Option.filter(o => floorSets.map(s => s.id).includes(o.BelongsToOptionSet) && o.Gear_X !== null && !o.is_system_patch && !o.is_default);
     
     floorOptions.forEach(opt => {
         
