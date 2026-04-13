@@ -20,15 +20,34 @@ export async function updatePositions(tableName, updates) {
 
 // --- IMAGE UPLOAD ---
 export async function uploadImage(file) {
-    if (!file) return null;
-    const fileName = `${Date.now()}-${file.name}`;
-    const { data, error } = await supabase.storage.from('plans').upload(fileName, file);
-    if (error) {
+    try {
+        // 1. CLEAN THE FILENAME: Replace spaces, commas, and weird symbols with underscores
+        const cleanName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+        
+        // 2. Create the safe file path
+        const fileName = `${Date.now()}-${cleanName}`;
+
+        // 3. Upload to Supabase
+        const { data, error } = await supabase.storage
+            .from('plans') // Ensure this matches your bucket name
+            .upload(fileName, file, {
+                cacheControl: '3600',
+                upsert: false
+            });
+
+        if (error) throw error;
+
+        // 4. Get the public URL to save in your database
+        const { data: publicUrlData } = supabase.storage
+            .from('plans')
+            .getPublicUrl(fileName);
+
+        return publicUrlData.publicUrl;
+        
+    } catch (error) {
         console.error('Error uploading image:', error);
-        return null;
+        return null; // Return null so the app doesn't crash completely
     }
-    const { data: { publicUrl } } = supabase.storage.from('plans').getPublicUrl(fileName);
-    return publicUrl;
 }
 
 // --- MODEL HOME ---
