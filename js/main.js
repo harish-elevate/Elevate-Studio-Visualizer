@@ -69,6 +69,8 @@ function setupEventListeners() {
             { label: 'Password', id: 'password', type: 'password' }
         ]);
 
+        getEl('modalSave').textContent = 'Login';
+
         // 3. Talk to the Supabase Vault when they click Save
         state.modalSaveCallback = async (formData) => {
             // Visual feedback so you know it's checking
