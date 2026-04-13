@@ -1178,7 +1178,9 @@ function openGalleryModal(opt, set) {
     const packages = {};
     images.forEach(img => {
         const imgUrl = img.url || img.Url || img.URL || img.image; 
-        if (imgUrl && imgUrl.trim() !== '') {
+        
+        // ADDED: && imgUrl !== 'placeholder' to completely ignore empty package markers
+        if (imgUrl && imgUrl.trim() !== '' && imgUrl !== 'placeholder') {
             const groupName = img.group || img.Group || img.PackageName || 'Standard Style';
             if (!packages[groupName]) packages[groupName] = [];
             packages[groupName].push(imgUrl);
