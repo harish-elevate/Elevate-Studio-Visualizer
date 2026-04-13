@@ -1,3 +1,4 @@
+import { supabase } from './supabaseClient.js';
 import { state, db, loadDataFromSupabase } from './state.js';
 import { getEl, showView, updateHeader, renderLandingPage, initCustomizer, showModal, hideModal, showSortableListModal } from './ui.js';
 import { handleZoom, resetZoom, exportPlan, exportPdf, setupMarkupBarListeners } from './canvas.js';
@@ -51,16 +52,48 @@ function setupEventListeners() {
         }
     });
 
-    getEl('adminLoginBtn').addEventListener('click', () => {
-        if (state.isAdminLoggedIn) { initAdminDashboard(); return; }
-        showModal('Admin Login', [{ label: 'Password', id: 'password', type: 'password' }]);
-        state.modalSaveCallback = (formData) => {
-            if (formData.password === 'admin') {
+    getEl('adminLoginBtn').addEventListener('click', async () => {
+        // 1. Check if Supabase already remembers us from a previous session
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session || state.isAdminLoggedIn) { 
+            state.isAdminLoggedIn = true;
+            updateHeader();
+            initAdminDashboard(); 
+            return; 
+        }
+
+        // 2. Ask for BOTH Email and Password using your native UI modal
+        showModal('Admin Secure Login', [
+            { label: 'Email Address', id: 'email', type: 'email' },
+            { label: 'Password', id: 'password', type: 'password' }
+        ]);
+
+        // 3. Talk to the Supabase Vault when they click Save
+        state.modalSaveCallback = async (formData) => {
+            // Visual feedback so you know it's checking
+            const saveBtn = getEl('modalSave');
+            const originalText = saveBtn.textContent;
+            saveBtn.textContent = 'Verifying...';
+            saveBtn.disabled = true;
+
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email: formData.email,
+                password: formData.password,
+            });
+
+            if (error) {
+                // Hacker denied!
+                alert(`Login Failed: ${error.message}`);
+                saveBtn.textContent = originalText;
+                saveBtn.disabled = false;
+            } else {
+                // Access granted!
                 state.isAdminLoggedIn = true;
                 updateHeader();
                 initAdminDashboard();
                 hideModal();
-            } else { alert('Incorrect password.'); }
+            }
         };
     });
 
