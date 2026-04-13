@@ -1232,7 +1232,7 @@ function openGalleryManager(optionId) {
         galleryImages.forEach(img => {
             if (!orderedGroups.includes(img.group)) orderedGroups.push(img.group);
         });
-        if (!orderedGroups.includes('Uncategorized')) orderedGroups.unshift('Uncategorized');
+        // Removed the forceful creation of the 'Uncategorized' section!
 
         // Render Package Sections in that specific order
         orderedGroups.forEach(pkgName => {
