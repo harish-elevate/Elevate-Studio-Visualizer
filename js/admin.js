@@ -1315,7 +1315,10 @@ function openGalleryManager(optionId) {
                 const delBtn = createElement('button', { type: 'button', className: 'gallery-delete-btn', textContent: '×' });
                 delBtn.addEventListener('click', () => {
                     syncGalleryStateFromDOM();
-                    galleryImages = galleryImages.filter(i => i !== imgObj);
+                    
+                    // FIXED: Compare the exact URL string instead of the object memory reference
+                    galleryImages = galleryImages.filter(i => i.url !== imgObj.url); 
+                    
                     renderModalContent();
                 });
 
