@@ -164,7 +164,7 @@ export function renderCustomizerCanvas() {
                 const optionSetsForFloor = db.OptionSet.filter(os => os.BelongsToFloor === state.currentFloorId).map(os => os.id);
                 const selectedOptionIds = Object.values(state.customizerSelections).flat().map(String);
                 
-                // 1. RENDER TOKEN
+                // Render Token to prevent fast-click overlapping
                 const thisRenderToken = Date.now() + Math.random();
                 fabricCanvas.currentRenderToken = thisRenderToken;
 
@@ -173,27 +173,8 @@ export function renderCustomizerCanvas() {
                         if (!optionSetsForFloor.includes(opt.BelongsToOptionSet)) return false;
                         return selectedOptionIds.includes(String(opt.id));
                     })
-                    // 2. THE ULTIMATE SORT 
-                    .sort((a, b) => {
-                        if (a.is_system_patch && !b.is_system_patch) return 1;
-                        if (!a.is_system_patch && b.is_system_patch) return -1;
-
-                        const layerA = Number(a.layer_order) || 0;
-                        const layerB = Number(b.layer_order) || 0;
-                        if (layerA !== layerB) return layerA - layerB;
-
-                        const setA = db.OptionSet.find(os => os.id === a.BelongsToOptionSet);
-                        const setB = db.OptionSet.find(os => os.id === b.BelongsToOptionSet);
-                        const posA = setA ? (Number(setA.position) || 0) : 0;
-                        const posB = setB ? (Number(setB.position) || 0) : 0;
-                        if (posA !== posB) return posA - posB;
-
-                        const optPosA = Number(a.position) || 0;
-                        const optPosB = Number(b.position) || 0;
-                        if (optPosA !== optPosB) return optPosA - optPosB;
-
-                        return Number(a.id) - Number(b.id);
-                    })
+                    // Back to basics: ONLY sort by your standard layer_order
+                    .sort((a, b) => (Number(a.layer_order) || 0) - (Number(b.layer_order) || 0))
                     .map(option => {
                         return new Promise((resolve) => {
                             if (!option.OptionImage) return resolve(null);
@@ -219,14 +200,13 @@ export function renderCustomizerCanvas() {
                     });
 
                 Promise.all(optionPromises).then((loadedImages) => {
-                    // 3. Abort if newer click happened
                     if (fabricCanvas.currentRenderToken !== thisRenderToken) return resolve();
 
-                    // 4. SAFELY WIPE OLD LAYERS 
+                    // Safely wipe old overlays (using filter to prevent FabricJS bugs)
                     const overlaysToRemove = fabricCanvas.getObjects().filter(obj => obj.isOverlay);
                     overlaysToRemove.forEach(obj => fabricCanvas.remove(obj));
 
-                    // 5. DRAW NEW LAYERS
+                    // Add the new images to the canvas
                     loadedImages.forEach(img => {
                         if (img) fabricCanvas.add(img);
                     });
