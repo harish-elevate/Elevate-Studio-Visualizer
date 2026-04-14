@@ -329,8 +329,40 @@ export function renderCustomizerCanvas() {
                     const optionSetsForFloor = db.OptionSet.filter(os => os.BelongsToFloor === state.currentFloorId).map(os => os.id);
                     const selectedOptionIds = Object.values(state.customizerSelections).flat();
                     
+                    // Convert all selected IDs to strings safely to prevent mismatch bugs (e.g. 12 !== "12")
+                    const safeSelectedIds = selectedOptionIds.map(id => String(id));
+                    
                     const optionPromises = db.Option
-                        .filter(opt => optionSetsForFloor.includes(opt.BelongsToOptionSet) && selectedOptionIds.includes(opt.id))
+                        .filter(opt => {
+                            // 1. Must belong to the current floor
+                            if (!optionSetsForFloor.includes(opt.BelongsToOptionSet)) return false;
+
+                            // 2. SYSTEM PATCH RULE: Auto-show if Triggered AND NO Conflicts exist
+                            if (opt.is_system_patch) {
+                                let triggers = [];
+                                let conflicts = [];
+                                
+                                // Safely parse the data whether Supabase gives us real Arrays or raw Strings
+                                try {
+                                    triggers = (typeof opt.trigger_options === 'string' ? JSON.parse(opt.trigger_options) : (opt.trigger_options || [])).map(String);
+                                    conflicts = (typeof opt.conflicts === 'string' ? JSON.parse(opt.conflicts) : (opt.conflicts || [])).map(String);
+                                } catch (e) {
+                                    console.warn("Could not parse triggers/conflicts for", opt.Name);
+                                }
+                                
+                                const isTriggered = triggers.length > 0 && triggers.some(id => safeSelectedIds.includes(id));
+                                const isConflicted = conflicts.length > 0 && conflicts.some(id => safeSelectedIds.includes(id));
+
+                                // DEBUGGER: This will print exactly what the engine sees to your console
+                                console.log(`⚙️ Patch [${opt.Name}]: Triggered? ${isTriggered} | Conflicted? ${isConflicted} | Safe IDs:`, safeSelectedIds);
+
+                                // The Patch only survives if it's triggered AND has zero conflicts
+                                return isTriggered && !isConflicted;
+                            }
+
+                            // 3. STANDARD OPTION RULE: Must be explicitly selected
+                            return selectedOptionIds.includes(opt.id);
+                        })
                         .sort((a, b) => (a.layer_order ?? 0) - (b.layer_order ?? 0))
                         .map(option => {
                             return new Promise((r) => {
