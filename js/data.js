@@ -21,13 +21,16 @@ export async function updatePositions(tableName, updates) {
 // --- IMAGE UPLOAD ---
 export async function uploadImage(file) {
     try {
-        // 1. CLEAN THE FILENAME: Replace spaces, commas, and weird symbols with underscores
-        const cleanName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+        // 1. Get the name, or use a default if it's a cropped Blob that doesn't have a name
+        const originalName = file.name || 'cropped_image.jpg';
+
+        // 2. CLEAN THE FILENAME: Replace spaces, commas, and weird symbols with underscores
+        const cleanName = originalName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
         
-        // 2. Create the safe file path
+        // 3. Create the safe file path
         const fileName = `${Date.now()}-${cleanName}`;
 
-        // 3. Upload to Supabase
+        // 4. Upload to Supabase
         const { data, error } = await supabase.storage
             .from('plans') // Ensure this matches your bucket name
             .upload(fileName, file, {
@@ -37,7 +40,7 @@ export async function uploadImage(file) {
 
         if (error) throw error;
 
-        // 4. Get the public URL to save in your database
+        // 5. Get the public URL to save in your database
         const { data: publicUrlData } = supabase.storage
             .from('plans')
             .getPublicUrl(fileName);
@@ -46,7 +49,7 @@ export async function uploadImage(file) {
         
     } catch (error) {
         console.error('Error uploading image:', error);
-        return null; // Return null so the app doesn't crash completely
+        return null; 
     }
 }
 
