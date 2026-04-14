@@ -1080,7 +1080,6 @@ function evaluateSystemPatches() {
     const patches = db.Option.filter(o => o.is_system_patch);
 
     patches.forEach(patch => {
-        // 1. Safely parse triggers and conflicts (handles both Arrays and raw Supabase strings)
         let triggers = [];
         let conflicts = [];
         try {
@@ -1092,29 +1091,26 @@ function evaluateSystemPatches() {
 
         if (triggers.length === 0) return;
 
-        // 2. Flatten all current selections to easily check what's active
         const allSelectedIds = Object.values(state.customizerSelections).flat().map(Number);
         
-        // 3. THE LOGIC: Is it triggered? Is it conflicted?
-        // Using .some() means it only needs ONE trigger to turn on, and ONE conflict to turn off.
-        const isTriggered = triggers.some(triggerId => allSelectedIds.includes(triggerId));
+        // THE FIX: Changed .some() to .every()
+        // Now, it requires EVERY trigger in the list to be active before it turns on.
+        const isTriggered = triggers.every(triggerId => allSelectedIds.includes(triggerId));
+        
+        // Conflicts still use .some() because ANY single conflict should kill the patch.
         const hasConflict = conflicts.some(conflictId => allSelectedIds.includes(conflictId));
         
-        // The ultimate rule: It should ONLY be on if it is triggered AND has zero conflicts
         const shouldBeOn = isTriggered && !hasConflict;
         
         const patchIsCurrentlyOn = allSelectedIds.includes(patch.id);
         const patchSetId = patch.BelongsToOptionSet;
 
-        // 4. Update the memory state
         if (shouldBeOn && !patchIsCurrentlyOn) {
-            // TURN IT ON: Triggers met AND no conflicts
             if (!state.customizerSelections[patchSetId]) state.customizerSelections[patchSetId] = [];
             if (!state.customizerSelections[patchSetId].includes(patch.id)) {
                 state.customizerSelections[patchSetId].push(patch.id);
             }
         } else if (!shouldBeOn && patchIsCurrentlyOn) {
-            // TURN IT OFF: Triggers lost OR a conflict appeared
             if (state.customizerSelections[patchSetId]) {
                 state.customizerSelections[patchSetId] = state.customizerSelections[patchSetId].filter(id => id !== patch.id);
             }
