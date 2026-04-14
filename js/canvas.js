@@ -4,75 +4,10 @@ import { getEl, createElement } from './ui.js';
 let fabricCanvas = null;
 let lastFloorId = null;
 
-// History Stack
-let history = [];
-let historyIndex = -1;
-let isHistoryProcessing = false;
-
-function saveHistory() {
-    if (isHistoryProcessing || !fabricCanvas) return;
-    const json = fabricCanvas.toObject(['isOverlay']);
-    delete json.backgroundImage; 
-    const markupOnly = { ...json, objects: json.objects.filter(o => !o.isOverlay) };
-    
-    if (historyIndex < history.length - 1) history = history.slice(0, historyIndex + 1);
-    history.push(JSON.stringify(markupOnly));
-    historyIndex++;
-    updateHistoryButtons();
-}
-
-function updateHistoryButtons() {
-    const undoBtn = getEl('undoBtn');
-    const redoBtn = getEl('redoBtn');
-    if(undoBtn) undoBtn.disabled = historyIndex <= 0;
-    if(redoBtn) redoBtn.disabled = historyIndex >= history.length - 1;
-}
-
-function undo() {
-    if (historyIndex > 0) {
-        isHistoryProcessing = true;
-        historyIndex--;
-        loadHistoryState(history[historyIndex]);
-        updateHistoryButtons();
-        isHistoryProcessing = false;
-    }
-}
-
-function redo() {
-    if (historyIndex < history.length - 1) {
-        isHistoryProcessing = true;
-        historyIndex++;
-        loadHistoryState(history[historyIndex]);
-        updateHistoryButtons();
-        isHistoryProcessing = false;
-    }
-}
-
-function loadHistoryState(jsonString) {
-    const data = JSON.parse(jsonString);
-    fabricCanvas.getObjects().forEach(obj => { if (!obj.isOverlay) fabricCanvas.remove(obj); });
-    
-    fabric.util.enlivenObjects(data.objects, (objs) => {
-        objs.forEach(obj => { fabricCanvas.add(obj); });
-        fabricCanvas.renderAll();
-    });
-}
-
 function _setupFabricEventHandlers() {
-    const colorInput = getEl('markupColor');
-    const thicknessInput = getEl('markupThickness');
-    const deleteBtn = getEl('deleteMarkupBtn');
-    const undoBtn = getEl('undoBtn');
-    const redoBtn = getEl('redoBtn');
-
     let isDragging = false;
-    // FIX: Define these variables here to track pan position safely
     let lastPanX = 0;
     let lastPanY = 0;
-
-    fabricCanvas.on('object:added', (e) => { if (!e.target.isOverlay && !isHistoryProcessing) saveHistory(); });
-    fabricCanvas.on('object:modified', (e) => { if (!e.target.isOverlay && !isHistoryProcessing) saveHistory(); });
-    fabricCanvas.on('object:removed', (e) => { if (!e.target.isOverlay && !isHistoryProcessing) saveHistory(); });
 
     // --- PINCH ZOOM SUPPORT (iPad) ---
     fabricCanvas.on('touch:gesture', function(e) {
@@ -89,18 +24,15 @@ function _setupFabricEventHandlers() {
         }
     });
 
-    // --- MOUSE DOWN ---
+    // --- ALWAYS PAN ON MOUSE DOWN ---
     fabricCanvas.on('mouse:down', (o) => {
-        const tool = state.markup.tool;
-        const pointer = fabricCanvas.getPointer(o.e);
-
-        if (tool === 'pan') {
+        // Only pan if we aren't clicking an interactive object (like a Gear Icon)
+        if (!o.target || !o.target.selectable) {
             isDragging = true;
             fabricCanvas.selection = false;
             fabricCanvas.defaultCursor = 'grabbing';
             fabricCanvas.setCursor('grabbing');
 
-            // FIX: Capture initial Screen Coordinates for Panning
             const e = o.e;
             if(e.touches && e.touches[0]) {
                 lastPanX = e.touches[0].clientX;
@@ -110,37 +42,13 @@ function _setupFabricEventHandlers() {
                 lastPanY = e.clientY;
             }
         }
-
-        if (tool === 'line') {
-            state.markup.line.isDrawing = true;
-            const points = [pointer.x, pointer.y, pointer.x, pointer.y];
-            state.markup.line.instance = new fabric.Line(points, {
-                strokeWidth: parseInt(thicknessInput.value, 10), stroke: colorInput.value, selectable: false, evented: false, strokeLineCap: 'round'
-            });
-            fabricCanvas.add(state.markup.line.instance);
-        } else if (tool === 'text') {
-            if (!o.target) {
-                const text = new fabric.IText('Your Text', {
-                    left: pointer.x, top: pointer.y, fill: colorInput.value, fontSize: parseInt(thicknessInput.value, 10) * 5, 
-                });
-                fabricCanvas.add(text);
-                fabricCanvas.setActiveObject(text);
-                text.enterEditing();
-                text.selectAll();
-                setActiveMarkupTool('select');
-            }
-        }
     });
 
-    // --- MOUSE MOVE ---
+    // --- MOUSE MOVE (Panning logic) ---
     fabricCanvas.on('mouse:move', (o) => {
-        const pointer = fabricCanvas.getPointer(o.e);
-
-        if (isDragging && state.markup.tool === 'pan') {
+        if (isDragging) {
             const e = o.e;
             let currX, currY;
-            
-            // Handle Touch vs Mouse
             if(e.touches && e.touches[0]) {
                 currX = e.touches[0].clientX;
                 currY = e.touches[0].clientY;
@@ -149,24 +57,15 @@ function _setupFabricEventHandlers() {
                 currY = e.clientY;
             }
 
-            // Calculate Delta
             const deltaX = currX - lastPanX;
             const deltaY = currY - lastPanY;
-
-            // Apply Pan
             const vpt = fabricCanvas.viewportTransform;
             vpt[4] += deltaX;
             vpt[5] += deltaY;
             fabricCanvas.requestRenderAll();
             
-            // Update last pos
             lastPanX = currX;
             lastPanY = currY;
-        }
-
-        if (state.markup.tool === 'line' && state.markup.line.isDrawing) {
-            state.markup.line.instance.set({ x2: pointer.x, y2: pointer.y });
-            fabricCanvas.renderAll();
         }
     });
 
@@ -174,17 +73,12 @@ function _setupFabricEventHandlers() {
     fabricCanvas.on('mouse:up', () => {
         if (isDragging) {
             isDragging = false;
-            if (state.markup.tool === 'pan') { 
-                fabricCanvas.defaultCursor = 'grab'; 
-                fabricCanvas.setCursor('grab'); 
-            }
-        }
-        if (state.markup.line.isDrawing) {
-            state.markup.line.instance.set({ evented: true, selectable: true });
-            state.markup.line.isDrawing = false;
+            fabricCanvas.defaultCursor = 'grab'; 
+            fabricCanvas.setCursor('grab'); 
         }
     });
 
+    // --- SCROLL WHEEL ZOOM ---
     fabricCanvas.on('mouse:wheel', function(opt) {
         var delta = opt.e.deltaY;
         var zoom = fabricCanvas.getZoom();
@@ -195,62 +89,32 @@ function _setupFabricEventHandlers() {
         opt.e.preventDefault();
         opt.e.stopPropagation();
     });
-
-    fabricCanvas.on('selection:created', () => deleteBtn.disabled = false);
-    fabricCanvas.on('selection:cleared', () => deleteBtn.disabled = true);
-    fabricCanvas.on('selection:updated', () => deleteBtn.disabled = false);
-
-    if(undoBtn) undoBtn.onclick = undo;
-    if(redoBtn) redoBtn.onclick = redo;
 }
 
 export function renderCustomizerCanvas() {
-    
-    // ... rest of your existing function ...
     return new Promise((resolve) => {
         const floor = db.Floor.find(f => f.id === state.currentFloorId);
-        
         const loader = getEl('globalLoader');
         if (loader) loader.classList.remove('hidden');
 
         if (!fabricCanvas) {
             fabricCanvas = new fabric.Canvas('markupCanvas', { 
-                width: 0, 
-                height: 0, 
-                selection: false, 
-                preserveObjectStacking: true,
-                defaultCursor: 'grab' 
+                width: 0, height: 0, selection: false, preserveObjectStacking: true, defaultCursor: 'grab' 
             });
             _setupFabricEventHandlers();
-            saveHistory();
         }
 
-        if (lastFloorId && lastFloorId !== state.currentFloorId) {
-            const json = fabricCanvas.toObject(['isOverlay']);
-            delete json.backgroundImage;
-            const userMarkups = { ...json, objects: json.objects.filter(o => !o.isOverlay) };
-            state.floorPlanMarkups[lastFloorId] = userMarkups;
-        } else if (state.currentFloorId) {
-            const json = fabricCanvas.toObject(['isOverlay']);
-            delete json.backgroundImage;
-            const userMarkups = { ...json, objects: json.objects.filter(o => !o.isOverlay) };
-            state.floorPlanMarkups[state.currentFloorId] = userMarkups;
-        }
-
+        // --- THE GHOST FIX: 'else' block removed completely ---
         if (state.currentFloorId !== lastFloorId) {
             fabricCanvas.clear();
             fabricCanvas.setBackgroundColor(null, fabricCanvas.renderAll.bind(fabricCanvas));
             fabricCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
             lastFloorId = state.currentFloorId;
-            history = []; historyIndex = -1; 
-        } else {
-            fabricCanvas.getObjects().forEach(obj => { if (obj.isOverlay) fabricCanvas.remove(obj); });
         }
 
         if (!floor) {
             if (loader) loader.classList.add('hidden');
-            resolve();
-            return;
+            return resolve();
         }
 
         let imageUrl = floor.BasePlanImage;
@@ -260,117 +124,121 @@ export function renderCustomizerCanvas() {
             isElevationMode = true;
             const optionSetsForFloor = db.OptionSet.filter(os => os.BelongsToFloor === state.currentFloorId).map(os => os.id);
             const selectedOptionIds = Object.values(state.customizerSelections).flat();
-            
-            const selectedOption = db.Option.find(opt => 
-                optionSetsForFloor.includes(opt.BelongsToOptionSet) && selectedOptionIds.includes(opt.id)
-            );
+            const selectedOption = db.Option.find(opt => optionSetsForFloor.includes(opt.BelongsToOptionSet) && selectedOptionIds.includes(opt.id));
 
-            if (selectedOption && selectedOption.OptionImage) {
-                imageUrl = selectedOption.OptionImage;
-            } else {
-                imageUrl = null; 
-            }
+            imageUrl = (selectedOption && selectedOption.OptionImage) ? selectedOption.OptionImage : null;
         }
 
         if (!imageUrl) {
             const container = getEl('customizerCanvasContainer').parentElement;
-            const canvasWidth = container.offsetWidth;
-            const canvasHeight = container.offsetHeight;
-            fabricCanvas.setDimensions({ width: canvasWidth, height: canvasHeight });
+            fabricCanvas.setDimensions({ width: container.offsetWidth, height: container.offsetHeight });
             fabricCanvas.setBackgroundColor('#ffffff', fabricCanvas.renderAll.bind(fabricCanvas));
             
             if (isElevationMode) {
                 const text = new fabric.Text('Select an elevation from the sidebar', {
                     fontSize: 20, fill: '#999', originX: 'center', originY: 'center',
-                    left: canvasWidth / 2, top: canvasHeight / 2, selectable: false
+                    left: container.offsetWidth / 2, top: container.offsetHeight / 2, selectable: false
                 });
                 fabricCanvas.add(text);
             }
-            
             if (loader) loader.classList.add('hidden');
-            resolve();
-            return;
+            return resolve();
         }
         
         const image = new Image();
         image.crossOrigin = "anonymous";
         image.onload = () => {
             const container = getEl('customizerCanvasContainer').parentElement;
-            const canvasWidth = container.offsetWidth;
-            const canvasHeight = container.offsetHeight;
-            fabricCanvas.setDimensions({ width: canvasWidth, height: canvasHeight });
+            fabricCanvas.setDimensions({ width: container.offsetWidth, height: container.offsetHeight });
 
-            const scale = Math.min(canvasWidth / image.width, canvasHeight / image.height);
-            const bgImgOffsetX = (canvasWidth - image.width * scale) / 2;
-            const bgImgOffsetY = (canvasHeight - image.height * scale) / 2;
+            const scale = Math.min(container.offsetWidth / image.width, container.offsetHeight / image.height);
+            const bgImgOffsetX = (container.offsetWidth - image.width * scale) / 2;
+            const bgImgOffsetY = (container.offsetHeight - image.height * scale) / 2;
             const bgMetrics = { offsetX: bgImgOffsetX, offsetY: bgImgOffsetY, width: image.width * scale, height: image.height * scale };
 
             fabricCanvas.setBackgroundImage(imageUrl, fabricCanvas.renderAll.bind(fabricCanvas), {
                 originX: 'left', originY: 'top', crossOrigin: 'anonymous', scaleX: scale, scaleY: scale, left: bgImgOffsetX, top: bgImgOffsetY,
             });
 
-            const restoreMarkups = new Promise(resolveMarkup => {
-                if (state.floorPlanMarkups[state.currentFloorId]) {
-                    const savedData = state.floorPlanMarkups[state.currentFloorId];
-                    if (savedData.objects) {
-                        fabric.util.enlivenObjects(savedData.objects, (objs) => {
-                            const currentObjects = fabricCanvas.getObjects().filter(o => !o.isOverlay);
-                            if (currentObjects.length === 0) {
-                                objs.forEach(obj => fabricCanvas.add(obj));
-                            }
-                            resolveMarkup();
+            if (!isElevationMode) {
+                const optionSetsForFloor = db.OptionSet.filter(os => os.BelongsToFloor === state.currentFloorId).map(os => os.id);
+                const selectedOptionIds = Object.values(state.customizerSelections).flat().map(String);
+                
+                // 1. RENDER TOKEN
+                const thisRenderToken = Date.now() + Math.random();
+                fabricCanvas.currentRenderToken = thisRenderToken;
+
+                const optionPromises = db.Option
+                    .filter(opt => {
+                        if (!optionSetsForFloor.includes(opt.BelongsToOptionSet)) return false;
+                        return selectedOptionIds.includes(String(opt.id));
+                    })
+                    // 2. THE ULTIMATE SORT 
+                    .sort((a, b) => {
+                        if (a.is_system_patch && !b.is_system_patch) return 1;
+                        if (!a.is_system_patch && b.is_system_patch) return -1;
+
+                        const layerA = Number(a.layer_order) || 0;
+                        const layerB = Number(b.layer_order) || 0;
+                        if (layerA !== layerB) return layerA - layerB;
+
+                        const setA = db.OptionSet.find(os => os.id === a.BelongsToOptionSet);
+                        const setB = db.OptionSet.find(os => os.id === b.BelongsToOptionSet);
+                        const posA = setA ? (Number(setA.position) || 0) : 0;
+                        const posB = setB ? (Number(setB.position) || 0) : 0;
+                        if (posA !== posB) return posA - posB;
+
+                        const optPosA = Number(a.position) || 0;
+                        const optPosB = Number(b.position) || 0;
+                        if (optPosA !== optPosB) return optPosA - optPosB;
+
+                        return Number(a.id) - Number(b.id);
+                    })
+                    .map(option => {
+                        return new Promise((resolve) => {
+                            if (!option.OptionImage) return resolve(null);
+                            
+                            const imgEl = new Image();
+                            imgEl.crossOrigin = 'anonymous';
+                            
+                            imgEl.onload = () => {
+                                const img = new fabric.Image(imgEl);
+                                img.set({
+                                    left: bgMetrics.offsetX + (option.X_Position / 100) * bgMetrics.width,
+                                    top: bgMetrics.offsetY + (option.Y_Position / 100) * bgMetrics.height,
+                                    scaleX: ((option.Width / 100) * bgMetrics.width) / (img.width || 1),
+                                    scaleY: ((option.Height / 100) * bgMetrics.height) / (img.height || 1),
+                                    selectable: false, evented: false, isOverlay: true
+                                });
+                                resolve(img);
+                            };
+                            
+                            imgEl.onerror = () => resolve(null);
+                            imgEl.src = option.OptionImage;
                         });
-                    } else { resolveMarkup(); }
-                } else {
-                    resolveMarkup();
-                }
-            });
-
-            restoreMarkups.then(() => {
-                if (!isElevationMode) {
-                    const optionSetsForFloor = db.OptionSet.filter(os => os.BelongsToFloor === state.currentFloorId).map(os => os.id);
-                    const selectedOptionIds = Object.values(state.customizerSelections).flat();
-                    
-                    // Convert all selected IDs to strings safely to prevent mismatch bugs (e.g. 12 !== "12")
-                    const safeSelectedIds = selectedOptionIds.map(id => String(id));
-                    
-                    // 1. RENDER TOKEN: Prevents overlapping if you click super fast
-                    const thisRenderToken = Date.now() + Math.random();
-                    fabricCanvas.currentRenderToken = thisRenderToken;
-
-                    Promise.all(optionPromises).then((loadedImages) => {
-                        // 1. Abort if a newer click happened while downloading
-                        if (fabricCanvas.currentRenderToken !== thisRenderToken) return resolve();
-
-                        // 2. THE FIX: Find all overlays FIRST, put them in a safe list, THEN delete them.
-                        // This prevents FabricJS from skipping items while the array shifts!
-                        const overlaysToRemove = fabricCanvas.getObjects().filter(obj => obj.isOverlay);
-                        overlaysToRemove.forEach(obj => fabricCanvas.remove(obj));
-
-                        // 3. DRAW: Add them purely bottom-to-top based on the locked sort
-                        loadedImages.forEach(img => {
-                            if (img) fabricCanvas.add(img);
-                        });
-
-                        // 4. PROTECT: Bring User Markups and Grids back to the very front
-                        fabricCanvas.getObjects().forEach(obj => {
-                            if (!obj.isOverlay && obj !== fabricCanvas.backgroundImage) {
-                                fabricCanvas.bringToFront(obj);
-                            }
-                        });
-
-                        fabricCanvas.renderAll();
-                        
-                        saveHistory(); 
-                        if (loader) loader.classList.add('hidden');
-                        resolve();
                     });
-                } else {
-                    saveHistory();
+
+                Promise.all(optionPromises).then((loadedImages) => {
+                    // 3. Abort if newer click happened
+                    if (fabricCanvas.currentRenderToken !== thisRenderToken) return resolve();
+
+                    // 4. SAFELY WIPE OLD LAYERS 
+                    const overlaysToRemove = fabricCanvas.getObjects().filter(obj => obj.isOverlay);
+                    overlaysToRemove.forEach(obj => fabricCanvas.remove(obj));
+
+                    // 5. DRAW NEW LAYERS
+                    loadedImages.forEach(img => {
+                        if (img) fabricCanvas.add(img);
+                    });
+
+                    fabricCanvas.renderAll();
                     if (loader) loader.classList.add('hidden');
                     resolve();
-                }
-            });
+                });
+            } else {
+                if (loader) loader.classList.add('hidden');
+                resolve();
+            }
         };
         
         image.onerror = () => {
@@ -582,12 +450,6 @@ export async function generateBrochurePDF(floorIdsToInclude = []) {
     const initialViewport = fabricCanvas ? fabricCanvas.viewportTransform : null;
     const initialBg = fabricCanvas ? fabricCanvas.backgroundColor : null;
     
-    if (fabricCanvas && state.currentFloorId) {
-        const json = fabricCanvas.toObject(['isOverlay']);
-        delete json.backgroundImage;
-        const userMarkups = { ...json, objects: json.objects.filter(o => !o.isOverlay) };
-        state.floorPlanMarkups[state.currentFloorId] = userMarkups;
-    }
 
     try {
         const doc = new jsPDF({ orientation: 'p', unit: 'in', format: 'letter' });
@@ -812,87 +674,5 @@ async function getBlobAsBase64(blobUrl) {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result);
         reader.readAsDataURL(blob);
-    });
-}
-
-export function setupMarkupBarListeners() {
-    const markupBar = getEl('markup-bar');
-    const colorInput = getEl('markupColor');
-    const thicknessInput = getEl('markupThickness');
-    const deleteBtn = getEl('deleteMarkupBtn');
-    deleteBtn.disabled = true;
-
-    markupBar.addEventListener('click', (e) => {
-        const button = e.target.closest('button[data-tool]');
-        if (button) setActiveMarkupTool(button.dataset.tool);
-    });
-
-    const updateObjectProperty = (prop, value) => {
-        const activeObject = fabricCanvas.getActiveObject();
-        if (activeObject) {
-            if (activeObject.type === 'i-text' && (prop === 'stroke' || prop === 'strokeWidth')) {
-                 activeObject.set('fill', colorInput.value);
-                 if(prop === 'strokeWidth') activeObject.set('fontSize', parseInt(value, 10) * 5);
-            } else {
-                 activeObject.set(prop, value);
-            }
-            fabricCanvas.renderAll();
-        }
-    };
-
-    colorInput.addEventListener('input', () => {
-        const color = colorInput.value;
-        if(fabricCanvas.isDrawingMode) fabricCanvas.freeDrawingBrush.color = color;
-        updateObjectProperty('stroke', color);
-    });
-
-    thicknessInput.addEventListener('input', () => {
-        const thickness = parseInt(thicknessInput.value, 10);
-        if(fabricCanvas.isDrawingMode) fabricCanvas.freeDrawingBrush.width = thickness;
-        updateObjectProperty('strokeWidth', thickness);
-    });
-
-    deleteBtn.addEventListener('click', () => {
-        const activeObjects = fabricCanvas.getActiveObjects();
-        if (activeObjects) activeObjects.forEach(obj => fabricCanvas.remove(obj));
-        fabricCanvas.discardActiveObject().renderAll();
-    });
-
-    window.addEventListener('keydown', (e) => {
-        const activeEl = document.activeElement.tagName;
-        if (activeEl === 'INPUT' || activeEl === 'TEXTAREA') return;
-
-        if ((e.key === 'Delete' || e.key === 'Backspace') && fabricCanvas.getActiveObject()) {
-            const activeObjects = fabricCanvas.getActiveObjects();
-            if (activeObjects.length > 0) {
-                 activeObjects.forEach(obj => fabricCanvas.remove(obj));
-                 fabricCanvas.discardActiveObject().renderAll();
-            }
-        }
-        if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); }
-        if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo(); }
-    });
-}
-
-function setActiveMarkupTool(tool) {
-    if (!fabricCanvas) return;
-    state.markup.tool = tool;
-    fabricCanvas.isDrawingMode = (tool === 'freeform');
-    if (tool === 'freeform') {
-        fabricCanvas.freeDrawingBrush.color = getEl('markupColor').value;
-        fabricCanvas.freeDrawingBrush.width = parseInt(getEl('markupThickness').value, 10);
-        fabricCanvas.defaultCursor = 'crosshair';
-    } else if (tool === 'select') {
-        fabricCanvas.defaultCursor = 'default';
-        fabricCanvas.selection = true;
-    } else if (tool === 'pan') {
-        fabricCanvas.defaultCursor = 'grab';
-        fabricCanvas.selection = false;
-    } else {
-        fabricCanvas.defaultCursor = 'crosshair';
-        fabricCanvas.selection = false;
-    }
-    document.querySelectorAll('#markup-bar button[data-tool]').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.tool === tool);
     });
 }

@@ -1,7 +1,7 @@
 import { supabase } from './supabaseClient.js';
 import { state, db, loadDataFromSupabase } from './state.js';
 import { getEl, showView, updateHeader, renderLandingPage, initCustomizer, showModal, hideModal, showSortableListModal } from './ui.js';
-import { handleZoom, resetZoom, exportPlan, exportPdf, setupMarkupBarListeners } from './canvas.js';
+import { handleZoom, resetZoom, exportPlan, exportPdf } from './canvas.js';
 import { initAdminDashboard, renderAdminDashboard, initAdminModelManagement, initAdminEditor, renderAdminEditor, enterPositionEditMode, exitPositionEditMode, setupAdminControls } from './admin.js';
 import * as data from './data.js';
 
@@ -111,7 +111,6 @@ function setupEventListeners() {
 
     setupAdminControls();
     setupAdminEventListeners();
-    setupMarkupBarListeners();
 }
 
 function setupAdminEventListeners() {
