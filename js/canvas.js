@@ -205,6 +205,8 @@ function _setupFabricEventHandlers() {
 }
 
 export function renderCustomizerCanvas() {
+    
+    // ... rest of your existing function ...
     return new Promise((resolve) => {
         const floor = db.Floor.find(f => f.id === state.currentFloorId);
         
@@ -332,57 +334,33 @@ export function renderCustomizerCanvas() {
                     // Convert all selected IDs to strings safely to prevent mismatch bugs (e.g. 12 !== "12")
                     const safeSelectedIds = selectedOptionIds.map(id => String(id));
                     
-                    const optionPromises = db.Option
-                        .filter(opt => {
-                            // 1. Must belong to the current floor
-                            if (!optionSetsForFloor.includes(opt.BelongsToOptionSet)) return false;
+                    // 1. RENDER TOKEN: Prevents overlapping if you click super fast
+                    const thisRenderToken = Date.now() + Math.random();
+                    fabricCanvas.currentRenderToken = thisRenderToken;
 
-                            // 2. SYSTEM PATCH RULE: Auto-show if Triggered AND NO Conflicts exist
-                            if (opt.is_system_patch) {
-                                let triggers = [];
-                                let conflicts = [];
-                                
-                                // Safely parse the data whether Supabase gives us real Arrays or raw Strings
-                                try {
-                                    triggers = (typeof opt.trigger_options === 'string' ? JSON.parse(opt.trigger_options) : (opt.trigger_options || [])).map(String);
-                                    conflicts = (typeof opt.conflicts === 'string' ? JSON.parse(opt.conflicts) : (opt.conflicts || [])).map(String);
-                                } catch (e) {
-                                    console.warn("Could not parse triggers/conflicts for", opt.Name);
-                                }
-                                
-                                const isTriggered = triggers.length > 0 && triggers.some(id => safeSelectedIds.includes(id));
-                                const isConflicted = conflicts.length > 0 && conflicts.some(id => safeSelectedIds.includes(id));
+                    Promise.all(optionPromises).then((loadedImages) => {
+                        // 1. Abort if a newer click happened while downloading
+                        if (fabricCanvas.currentRenderToken !== thisRenderToken) return resolve();
 
-                                // DEBUGGER: This will print exactly what the engine sees to your console
-                                console.log(`⚙️ Patch [${opt.Name}]: Triggered? ${isTriggered} | Conflicted? ${isConflicted} | Safe IDs:`, safeSelectedIds);
+                        // 2. THE FIX: Find all overlays FIRST, put them in a safe list, THEN delete them.
+                        // This prevents FabricJS from skipping items while the array shifts!
+                        const overlaysToRemove = fabricCanvas.getObjects().filter(obj => obj.isOverlay);
+                        overlaysToRemove.forEach(obj => fabricCanvas.remove(obj));
 
-                                // The Patch only survives if it's triggered AND has zero conflicts
-                                return isTriggered && !isConflicted;
-                            }
-
-                            // 3. STANDARD OPTION RULE: Must be explicitly selected
-                            return selectedOptionIds.includes(opt.id);
-                        })
-                        .sort((a, b) => (a.layer_order ?? 0) - (b.layer_order ?? 0))
-                        .map(option => {
-                            return new Promise((r) => {
-                                if (!option.OptionImage) return r();
-                                fabric.Image.fromURL(option.OptionImage, (img) => {
-                                    img.set({
-                                        left: bgMetrics.offsetX + (option.X_Position / 100) * bgMetrics.width,
-                                        top: bgMetrics.offsetY + (option.Y_Position / 100) * bgMetrics.height,
-                                        scaleX: ((option.Width / 100) * bgMetrics.width) / (img.width || 1),
-                                        scaleY: ((option.Height / 100) * bgMetrics.height) / (img.height || 1),
-                                        selectable: false, evented: false, isOverlay: true
-                                    });
-                                    fabricCanvas.add(img);
-                                    fabricCanvas.sendToBack(img);
-                                    r();
-                                }, { crossOrigin: 'anonymous' });
-                            });
+                        // 3. DRAW: Add them purely bottom-to-top based on the locked sort
+                        loadedImages.forEach(img => {
+                            if (img) fabricCanvas.add(img);
                         });
 
-                    Promise.all(optionPromises).then(() => {
+                        // 4. PROTECT: Bring User Markups and Grids back to the very front
+                        fabricCanvas.getObjects().forEach(obj => {
+                            if (!obj.isOverlay && obj !== fabricCanvas.backgroundImage) {
+                                fabricCanvas.bringToFront(obj);
+                            }
+                        });
+
+                        fabricCanvas.renderAll();
+                        
                         saveHistory(); 
                         if (loader) loader.classList.add('hidden');
                         resolve();
