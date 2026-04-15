@@ -199,6 +199,7 @@ function renderClientCanvas(floorData) {
             clientCanvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
             opt.e.preventDefault();
             opt.e.stopPropagation();
+            updateGearScales();
         });
 
         let isDragging = false;
@@ -287,6 +288,7 @@ function renderClientCanvas(floorData) {
                 if (zoom < 0.2) zoom = 0.2;
                 var point = new fabric.Point(e.self.x, e.self.y);
                 clientCanvas.zoomToPoint(point, zoom);
+                updateGearScales();
             }
         });
     }
@@ -762,11 +764,11 @@ async function renderActiveOverlays(floorData, bgMetrics) {
 const getGearKey = (x, y) => `${Number(x).toFixed(4)},${Number(y).toFixed(4)}`;
 
 function renderGearIcons(floorData, bgMetrics) {
-    // 1. DEFAULT STATE: More transparent glass circle (55% white) with a grey plus sign
-    const defaultIconUrl = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="rgba(255, 255, 255, 0.55)" stroke="none"/><path d="M16 10v12M10 16h12" stroke="%23888888" stroke-width="2" stroke-linecap="round"/></svg>';
+    // 1. DEFAULT STATE: White fill circle with Orange border and Orange plus sign
+    const defaultIconUrl = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="white" stroke="none" stroke-width="2"/><path d="M16 10v12M10 16h12" stroke="%23ec8d44" stroke-width="2" stroke-linecap="round" fill="none"/></svg>';
     
-    // 2. ACTIVE / HOVER STATE: Solid white circle (95% white) with orange plus sign
-    const activeIconUrl = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="rgba(255, 255, 255, 0.95)" stroke="none"/><path d="M16 10v12M10 16h12" stroke="%23ec8d44" stroke-width="2" stroke-linecap="round"/></svg>';
+    // 2. ACTIVE / HOVER STATE: Solid Orange circle with White border and White plus sign
+    const activeIconUrl = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="%23ec8d44" stroke="none" stroke-width="2"/><path d="M16 10v12M10 16h12" stroke="white" stroke-width="2" stroke-linecap="round" fill="none"/></svg>';
 
     const floorSets = db.OptionSet.filter(os => os.BelongsToFloor === floorData.id);
     const allSelectedIds = Object.values(state.customizerSelections).flat();
@@ -803,6 +805,7 @@ function renderGearIcons(floorData, bgMetrics) {
     });
 
     // RENDER THE ICONS
+    // RENDER THE ICONS
     gearMap.forEach((data, keyString) => {
         const { x, y, isActive } = data;
         
@@ -810,14 +813,21 @@ function renderGearIcons(floorData, bgMetrics) {
         const initialIconUrl = isActive ? activeIconUrl : defaultIconUrl;
 
         fabric.Image.fromURL(initialIconUrl, (img) => {
-            const left = bgMetrics.offsetX + (x / 100) * bgMetrics.width - (img.width/2);
-            const top = bgMetrics.offsetY + (y / 100) * bgMetrics.height - (img.height/2);
+            // FIX: Removed the minus width/height math. We will let Fabric center it natively!
+            const left = bgMetrics.offsetX + (x / 100) * bgMetrics.width;
+            const top = bgMetrics.offsetY + (y / 100) * bgMetrics.height;
+
+            const currentZoom = clientCanvas.getZoom(); // Grab the zoom level in case they are already zoomed in
 
             img.set({
                 left: left, top: top,
+                originX: 'center', originY: 'center', // Centers perfectly on your coordinate!
+                scaleX: 1 / currentZoom,              // Instantly applies inverse scaling
+                scaleY: 1 / currentZoom,
                 selectable: false, evented: true, hoverCursor: 'pointer',
                 shadow: new fabric.Shadow({ color: 'rgba(0,0,0,0.15)', blur: 6, offsetX: 0, offsetY: 2 }),
-                data: { isGear: true, layerOrder: 9999 } 
+                data: { isGear: true, layerOrder: 9999 },
+                baseScale: 1 // Remembers its starting size for the math
             });
             
             // Hover logic: only change colors if it isn't ALREADY active
@@ -1929,6 +1939,23 @@ window.addEventListener('click', (event) => {
 
 getEl('exportBrochureBtn').addEventListener('click', openLeadCaptureModal);
 
+
+// --- NEW: INVERSE SCALING FOR PLUS SIGNS ---
+function updateGearScales() {
+    if (!clientCanvas) return;
+    const currentZoom = clientCanvas.getZoom();
+    clientCanvas.getObjects().forEach(obj => {
+        if (obj.data && obj.data.isGear) {
+            // Shrink the icon exactly as much as the canvas zooms in!
+            obj.set({
+                scaleX: (obj.baseScale || 1) / currentZoom,
+                scaleY: (obj.baseScale || 1) / currentZoom
+            });
+        }
+    });
+    clientCanvas.requestRenderAll();
+}
+
 // --- ZOOM LOGIC ---
 function handleClientZoom(factor) {
     if (!clientCanvas) return;
@@ -1938,6 +1965,7 @@ function handleClientZoom(factor) {
     // Zoom perfectly into the center of the screen
     const center = new fabric.Point(clientCanvas.width / 2, clientCanvas.height / 2);
     clientCanvas.zoomToPoint(center, zoom);
+    updateGearScales(); // <--- ADDED THIS
 }
 
 // Safely attach to the buttons (checks if they exist on the page first)
@@ -1951,6 +1979,7 @@ const zoomResetBtn = getEl('zoomResetBtn');
 if (zoomResetBtn) zoomResetBtn.addEventListener('click', () => {
     if (!clientCanvas) return;
     clientCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+    updateGearScales(); // <--- ADDED THIS
 });
 
 initializeClientApp();
