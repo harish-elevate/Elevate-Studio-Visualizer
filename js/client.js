@@ -1320,47 +1320,57 @@ window.selectGalleryPackage = function(optId, setId, groupName) {
     const floorData = wizardSteps[currentStepIndex];
     const set = db.OptionSet.find(s => s.id == setId);
     const opt = db.Option.find(o => o.id == optId);
-    const allowMultiple = set && set.allow_multiple_selections === true;
 
-    if (!state.customizerSelections[setId]) state.customizerSelections[setId] = [];
-    
-    if (!allowMultiple) {
-        state.customizerSelections[setId].forEach(existingId => {
-            if (existingId != optId && state.customizerSelections['gallery_picks']) {
-                delete state.customizerSelections['gallery_picks'][existingId];
-            }
-        });
-        state.customizerSelections[setId] = [parseInt(optId)]; 
-    } else {
-        // ROBUST GEAR CONFLICT CHECK FOR MODAL SELECTIONS
-        if (opt && opt.Gear_X !== null && opt.Gear_Y !== null) {
-            const currentGearKey = getGearKey(opt.Gear_X, opt.Gear_Y);
-            
-            const conflictingIds = state.customizerSelections[setId].filter(existingId => {
-                const existingOpt = db.Option.find(o => o.id === existingId);
-                if (!existingOpt || existingOpt.id === parseInt(optId)) return false;
-                if (existingOpt.Gear_X === null || existingOpt.Gear_Y === null) return false;
-                
-                return getGearKey(existingOpt.Gear_X, existingOpt.Gear_Y) === currentGearKey;
-            });
-            
-            conflictingIds.forEach(conflictId => {
-                state.customizerSelections[setId] = state.customizerSelections[setId].filter(id => id !== conflictId);
-                if (state.customizerSelections['gallery_picks']) delete state.customizerSelections['gallery_picks'][conflictId];
-            });
-        }
+    // 1. Is this option ALREADY selected in the main plan?
+    const isAlreadySelected = (state.customizerSelections[setId] || []).includes(parseInt(optId));
 
-        if (!state.customizerSelections[setId].includes(parseInt(optId))) {
-            state.customizerSelections[setId].push(parseInt(optId)); 
-        }
+    if (isAlreadySelected) {
+        // It's already in the plan! Just update the style and close the gallery.
+        if (!state.customizerSelections['gallery_picks']) state.customizerSelections['gallery_picks'] = {};
+        state.customizerSelections['gallery_picks'][optId] = groupName;
+        
+        renderClientCanvas(floorData); 
+        hide('modal');
+        openSidebarMenu(currentActiveSidebarContext);
+        return;
     }
-    
+
+    // 2. If it is NOT selected yet, we must run it through the logic engine!
+    // First, quietly save their style pick in the background so it applies if they accept the prompts.
     if (!state.customizerSelections['gallery_picks']) state.customizerSelections['gallery_picks'] = {};
     state.customizerSelections['gallery_picks'][optId] = groupName;
 
-    renderClientCanvas(floorData); 
+    // Close the gallery modal so the warning modals can pop up cleanly
     hide('modal');
-    openSidebarMenu(currentActiveSidebarContext);
+
+    // Run the exact same gauntlet as the standard sidebar buttons
+    const statusObj = getOptionLogicStatus(opt);
+
+    if (statusObj.status === 'locked') {
+        triggerLogicModal(opt.id, 'req', statusObj.items.join(','));
+    } 
+    else if (statusObj.status === 'conflict') {
+        triggerLogicModal(opt.id, 'conflict', statusObj.items.join(','));
+    } 
+    else if (statusObj.status === 'available') {
+        // Check for collateral damage (swapping out an existing option that others depend on)
+        let collateral = [];
+        if (!set.allow_multiple_selections) {
+            const existingIds = state.customizerSelections[set.id] || [];
+            existingIds.forEach(eid => {
+                if (eid !== opt.id) {
+                    collateral.push(...getCollateralDamage(eid));
+                }
+            });
+        }
+        
+        if (collateral.length > 0) {
+            const uniqueCollateral = [...new Map(collateral.map(item => [item.id, item])).values()];
+            triggerCollateralModal(opt, uniqueCollateral, 'swap', set);
+        } else {
+            handleOptionClick(opt, set); 
+        }
+    }
 };
 
 window.openLightbox = function(index) {
