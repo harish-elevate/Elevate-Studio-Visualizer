@@ -190,6 +190,7 @@ function renderClientCanvas(floorData) {
             selection: false, preserveObjectStacking: true, defaultCursor: 'grab'
         });
 
+        // 1. Scroll Wheel Zoom (Desktop)
         clientCanvas.on('mouse:wheel', function(opt) {
             var delta = opt.e.deltaY;
             var zoom = clientCanvas.getZoom();
@@ -197,21 +198,30 @@ function renderClientCanvas(floorData) {
             if (zoom > 5) zoom = 5; 
             if (zoom < 0.2) zoom = 0.2; 
             clientCanvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
+
+            updateGearScales();
+            
             opt.e.preventDefault();
             opt.e.stopPropagation();
-            updateGearScales();
         });
 
         let isDragging = false;
-        let hasMoved = false; // <--- NEW: Tracks if it's a drag or a click
+        let hasMoved = false; 
         let lastPosX, lastPosY;
 
+        // 2. Fabric Mouse/Pan Events
         clientCanvas.on('mouse:down', function(opt) {
             if (opt.target && opt.target.data && opt.target.data.isGear) return;
-            
             const evt = opt.e;
+            
+            // ABORT PANNING IF 2 FINGERS (Let Native Zoom handle it)
+            if (evt.touches && evt.touches.length >= 2) {
+                isDragging = false;
+                return;
+            }
+
             isDragging = true;
-            hasMoved = false; // Reset on every click
+            hasMoved = false; 
             clientCanvas.setCursor('grabbing');
             
             if(evt.touches && evt.touches[0]) {
@@ -224,8 +234,15 @@ function renderClientCanvas(floorData) {
         });
 
         clientCanvas.on('mouse:move', function(opt) {
+            const e = opt.e;
+            
+            // ABORT PANNING IF 2 FINGERS
+            if (e.touches && e.touches.length >= 2) {
+                isDragging = false;
+                return;
+            }
+
             if (isDragging) {
-                const e = opt.e;
                 let currX, currY;
                 if(e.touches && e.touches[0]) {
                     currX = e.touches[0].clientX;
@@ -235,12 +252,10 @@ function renderClientCanvas(floorData) {
                     currY = e.clientY;
                 }
                 
-                // If they moved more than 2 pixels, it's an official drag
                 if (Math.abs(currX - lastPosX) > 2 || Math.abs(currY - lastPosY) > 2) {
                     hasMoved = true;
                 }
 
-                // Only move the canvas if it's an official drag
                 if (hasMoved) {
                     const vpt = clientCanvas.viewportTransform;
                     vpt[4] += currX - lastPosX;
@@ -258,39 +273,64 @@ function renderClientCanvas(floorData) {
                 isDragging = false;
                 clientCanvas.setCursor('grab');
                 
-                // If they released the mouse but NEVER moved, it was just a click!
                 if (!hasMoved) {
-                    // 1. Check if we are currently on an Elevation tab
                     const currentFloor = wizardSteps[currentStepIndex];
                     const isElevationTab = currentFloor && currentFloor.Name && (currentFloor.Name.toLowerCase().includes('elevation') || currentFloor.Name.toLowerCase().includes('exterior'));
 
-                    // 2. If it is an elevation, DO NOTHING. Let them keep panning.
-                    if (isElevationTab) {
-                        return;
+                    if (!isElevationTab) {
+                        hide('customizerOptionSets');
+                        show('sidebarDefaultMessage');
+                        currentActiveSidebarContext = null;
                     }
-
-                    // 3. Otherwise, it's a normal floor plan: hide the menu and show the default message
-                    hide('customizerOptionSets');
-                    show('sidebarDefaultMessage');
-                    currentActiveSidebarContext = null;
                 }
             } 
         });
 
-        clientCanvas.on('touch:gesture', function(e) {
-            if (e.e.touches && e.e.touches.length == 2) {
-                e.e.preventDefault(); 
-                if (e.self.state == "start") {
-                    clientCanvas.startZoom = clientCanvas.getZoom();
-                }
-                var zoom = clientCanvas.startZoom * e.self.scale;
+        // 3. NATIVE VANILLA JS PINCH ZOOM (Bypasses FabricJS entirely)
+        const upperCanvas = clientCanvas.upperCanvasEl;
+        let initialPinchDist = null;
+        let initialPinchZoom = null;
+
+        upperCanvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                initialPinchDist = Math.sqrt(dx * dx + dy * dy);
+                initialPinchZoom = clientCanvas.getZoom();
+            }
+        }, { passive: false });
+
+        upperCanvas.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2 && initialPinchDist) {
+                e.preventDefault(); // Stop screen from scrolling
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                let scale = distance / initialPinchDist;
+                let zoom = initialPinchZoom * scale;
                 if (zoom > 5) zoom = 5;
                 if (zoom < 0.2) zoom = 0.2;
-                var point = new fabric.Point(e.self.x, e.self.y);
+
+                // Find exact center between two fingers
+                const rect = upperCanvas.getBoundingClientRect();
+                const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+                const point = new fabric.Point(centerX - rect.left, centerY - rect.top);
+
                 clientCanvas.zoomToPoint(point, zoom);
+
                 updateGearScales();
             }
+        }, { passive: false });
+
+        upperCanvas.addEventListener('touchend', (e) => {
+            if (e.touches.length < 2) {
+                initialPinchDist = null;
+                initialPinchZoom = null;
+            }
         });
+
     }
 
     clientCanvas.setDimensions({ width: canvasWidth, height: canvasHeight });
@@ -764,11 +804,11 @@ async function renderActiveOverlays(floorData, bgMetrics) {
 const getGearKey = (x, y) => `${Number(x).toFixed(4)},${Number(y).toFixed(4)}`;
 
 function renderGearIcons(floorData, bgMetrics) {
-    // 1. DEFAULT STATE: White fill circle with Orange border and Orange plus sign
-    const defaultIconUrl = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="white" stroke="none" stroke-width="2"/><path d="M16 10v12M10 16h12" stroke="%23ec8d44" stroke-width="2" stroke-linecap="round" fill="none"/></svg>';
+    // 1. DEFAULT STATE: White fill, Orange border, Orange plus sign (Visually smaller, large hit-box)
+    const defaultIconUrl = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 40 40"><circle cx="20" cy="20" r="11" fill="white" stroke="none" stroke-width="2"/><path d="M20 15v10M15 20h10" stroke="%23ec8d44" stroke-width="2" stroke-linecap="round" fill="none"/></svg>';
     
-    // 2. ACTIVE / HOVER STATE: Solid Orange circle with White border and White plus sign
-    const activeIconUrl = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="%23ec8d44" stroke="none" stroke-width="2"/><path d="M16 10v12M10 16h12" stroke="white" stroke-width="2" stroke-linecap="round" fill="none"/></svg>';
+    // 2. ACTIVE / HOVER STATE: Orange fill, White border, White plus sign (Visually smaller, large hit-box)
+    const activeIconUrl = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 40 40"><circle cx="20" cy="20" r="11" fill="%23ec8d44" stroke="none" stroke-width="2"/><path d="M20 15v10M15 20h10" stroke="white" stroke-width="2" stroke-linecap="round" fill="none"/></svg>';
 
     const floorSets = db.OptionSet.filter(os => os.BelongsToFloor === floorData.id);
     const allSelectedIds = Object.values(state.customizerSelections).flat();

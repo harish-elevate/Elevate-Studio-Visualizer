@@ -953,3 +953,132 @@ button.btn-disabled-gear:hover {
     color: #888 !important;
     font-style: italic;
 }
+
+/* =========================================
+   NATIVE MOBILE APP LAYOUT (Phones < 768px)
+   ========================================= */
+@media (max-width: 767px) {
+    
+    /* 1. HEADER & LOGO FIX */
+    .app-header { padding: 10px 15px !important; display: flex !important; flex-direction: row !important; align-items: center !important; }
+    .header-left { flex: 0 0 auto !important; }
+    .header-left img { max-height: 28px !important; margin-top: 0 !important; }
+    .header-brand { flex: 1 !important; text-align: left !important; padding-left: 12px !important; }
+    .header-brand h1 { 
+        display: block !important; 
+        font-size: 1.05rem !important; 
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0;
+    }
+    .app-footer { display: none !important; }
+
+    /* 2. COMPACT TABS (Replaces the bulky rounded steps) */
+    .wizard-progress-bar { 
+        flex: none !important; 
+        padding: 0 !important; 
+        margin: 0 !important;
+        gap: 0 !important;
+        border-radius: 0 !important;
+        background: #ffffff !important;
+        border-bottom: 1px solid var(--border-color) !important;
+        justify-content: space-between !important;
+    }
+    .wizard-step { 
+        flex: 1 !important; 
+        max-width: none !important;
+        border-radius: 0 !important; 
+        padding: 12px 2px !important; 
+        font-size: 0.7rem !important; 
+        background: transparent !important;
+        color: #888 !important;
+        border: none !important;
+        border-bottom: 3px solid transparent !important;
+        box-shadow: none !important;
+    }
+    .wizard-step.active {
+        color: var(--primary-color) !important;
+        border-bottom-color: var(--primary-color) !important;
+        background: transparent !important;
+        font-weight: bold !important;
+    }
+    .wizard-step.completed {
+        color: var(--headings-dark) !important;
+        background: transparent !important;
+        border: none !important;
+        border-bottom: 3px solid transparent !important;
+    }
+
+    /* 3. PINCH ZOOM FIX */
+    body, html { overflow: hidden !important; height: 100%; }
+    #customizerCanvasContainer, .canvas-wrapper, .upper-canvas, .lower-canvas {
+        touch-action: none !important; 
+    }
+    #landingPage, #reviewPage {
+        height: 100dvh !important; overflow-y: auto !important; padding-bottom: 80px !important;
+        -webkit-overflow-scrolling: touch; touch-action: pan-y !important; 
+    }
+
+    /* 4. LAYOUT & NAVIGATION BUTTON FIX */
+    #wizardPage {
+        display: flex !important; flex-direction: column !important;
+        /* THE FIX: Subtract the 55px header so it perfectly fits the screen! */
+        height: calc(100dvh - 55px) !important; 
+        padding: 0 !important; overflow: hidden !important;
+    }
+    .main-view { 
+        flex: 1 !important; display: flex !important; flex-direction: column !important;
+        border: none !important; border-radius: 0 !important; overflow: hidden !important;
+    }
+    .canvas-column {
+        flex: 1.2 !important; height: auto !important; padding: 0 !important;
+        border-bottom: 2px solid var(--primary-color);
+    }
+    .controls-column {
+        flex: 1 !important; height: auto !important; padding: 15px !important;
+        background: #f8f9fa !important; overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch; touch-action: pan-y !important; 
+    }
+    
+    /* Pin the Next/Back buttons to the bottom safely! */
+    .wizard-navigation { 
+        flex: none !important; 
+        display: flex !important; 
+        justify-content: space-between !important;
+        /* THE FIX: Added 25px padding to the bottom so the iPhone Home Bar doesn't block clicks */
+        padding: 10px 15px 25px 15px !important; 
+        background: #ffffff !important;
+        border-top: 1px solid #ddd !important;
+        z-index: 100;
+    }
+    .wizard-navigation button {
+        flex: 1 !important; margin: 0 5px !important; padding: 12px !important; font-size: 0.9rem !important;
+    }
+
+    /* 5. HORIZONTAL CARD SCROLL */
+    #customizerOptionSets > div {
+        display: flex !important; flex-direction: row !important;
+        overflow-x: auto !important; overflow-y: hidden !important; flex-wrap: nowrap !important;
+        gap: 15px !important; padding-bottom: 10px !important; 
+        
+        /* THE FIX: Removed scroll-snap to prevent Safari from crashing */
+        -webkit-overflow-scrolling: touch; scrollbar-width: none; 
+    }
+    #customizerOptionSets > div::-webkit-scrollbar { display: none; }
+    
+    #customizerOptionSets > div > div {
+        flex: 0 0 280px !important; margin-bottom: 0 !important;
+        height: max-content !important; 
+    }
+    /* 6. LANDING PAGE STEPS FIX */
+    .steps-flow-container { flex-direction: column !important; gap: 20px !important; }
+    .step-block { width: 100% !important; flex-direction: row-reverse !important; justify-content: flex-end !important; gap: 20px; }
+    .step-label { position: static !important; text-align: left !important; font-size: 1.1rem; }
+    .step-separator { transform: rotate(90deg); margin: -5px 0 !important; }
+
+    /* FIX: Force hidden elements to hide, beating the ID's !important tag */
+    #wizardPage.hidden, #reviewPage.hidden, #landingPage.hidden {
+        display: none !important;
+    }
+}
+
+/* THE FIX: Ensure JavaScript can always hide elements, even if they have !important tags */
+.hidden { display: none !important; }
