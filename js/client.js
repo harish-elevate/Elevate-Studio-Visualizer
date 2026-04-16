@@ -10,6 +10,84 @@ const hide = (id) => {
 };
 const show = (id) => getEl(id).classList.remove('hidden');
 
+// ==========================================
+    // MOBILE LOGIC: STREAMLINED
+    // ==========================================
+    document.addEventListener('click', function(e) {
+        const isFloorPlanMode = document.body.classList.contains('is-floor-plan');
+        const overlay = document.getElementById('customizerOptionSets');
+        
+        // 1. BACKGROUND CLICK CLOSE 
+        // Only run this if we are actively looking at a Floor Plan! (Fixes the Elevation bug)
+        if (isFloorPlanMode && overlay && e.target === overlay) {
+            overlay.classList.add('hidden');
+            const msg = document.getElementById('sidebarDefaultMessage');
+            if (msg && !msg.classList.contains('hide-permanently')) msg.classList.remove('hidden');
+            if (typeof currentActiveSidebarContext !== 'undefined') currentActiveSidebarContext = null;
+            return;
+        }
+
+        // 2. SMART AUTO-CLOSE (Only on mobile, Floor Plan mode)
+        if (window.innerWidth <= 767 && isFloorPlanMode) {
+            const btn = e.target.closest('button');
+            if (!btn) return;
+
+            if (btn.closest('#customizerOptionSets') || btn.closest('#modal')) {
+                const text = btn.textContent.toLowerCase();
+                
+                if (text.includes('add') || text.includes('select') || text.includes('remove')) {
+                    setTimeout(() => {
+                        const modal = document.getElementById('modal');
+                        const modalTitle = document.getElementById('modalTitle') ? document.getElementById('modalTitle').textContent : '';
+                        
+                        // CRITICAL FIX: If the Prerequisite or Conflict modal is open, ABORT the auto-close!
+                        if (modal && !modal.classList.contains('hidden') && (modalTitle.includes('Unlock') || modalTitle.includes('Conflict'))) {
+                            return; 
+                        }
+                        
+                        // Otherwise, close the menus safely
+                        if (overlay) overlay.classList.add('hidden');
+                        if (modal && !modal.classList.contains('hidden')) modal.classList.add('hidden');
+                        if (typeof currentActiveSidebarContext !== 'undefined') currentActiveSidebarContext = null;
+                    }, 150);
+                }
+            }
+        }
+    }, true);
+
+    // 2. BACKGROUND CLICK CLOSE
+    document.addEventListener('click', function(e) {
+        const overlay = document.getElementById('customizerOptionSets');
+        if (overlay && e.target === overlay) {
+            overlay.classList.add('hidden');
+            document.getElementById('sidebarDefaultMessage').classList.remove('hidden');
+            if (typeof currentActiveSidebarContext !== 'undefined') currentActiveSidebarContext = null;
+        }
+    });
+
+
+    // 3. FOOLPROOF ELEVATION TAB CHECKER
+    // This runs a safety check every time you click anywhere in the customizer!
+    document.addEventListener('click', () => {
+        setTimeout(() => {
+            if (typeof wizardSteps === 'undefined' || typeof currentStepIndex === 'undefined') return;
+            const stepData = wizardSteps[currentStepIndex];
+            if (!stepData) return;
+            
+            const isElevationTab = stepData.Name && (stepData.Name.toLowerCase().includes('elevation') || stepData.Name.toLowerCase().includes('exterior'));
+            
+            if (isElevationTab || stepData.isReview) {
+                document.body.classList.remove('is-floor-plan'); // Force Full Screen OFF
+            } else {
+                // Only turn full screen ON if the wizard page is actually visible
+                const wizardPage = document.getElementById('wizardPage');
+                if (wizardPage && !wizardPage.classList.contains('hidden')) {
+                    document.body.classList.add('is-floor-plan');
+                }
+            }
+        }, 50); // Small 50ms delay lets the app switch tabs before checking
+    });
+
 // --- WIZARD STATE ---
 let wizardSteps = []; 
 let currentStepIndex = 0;
@@ -132,6 +210,18 @@ function buildWizardProgressBar() {
 
             // 2. Update the index and load the newly clicked step
             currentStepIndex = index;
+
+            // --- INSERT THIS BEFORE loadWizardStep() ---
+            const clickedStep = wizardSteps[index];
+            if (clickedStep && clickedStep.Name) {
+                const isElev = clickedStep.Name.toLowerCase().includes('elevation') || clickedStep.Name.toLowerCase().includes('exterior');
+                if (isElev || clickedStep.isReview) {
+                    document.body.classList.remove('is-floor-plan');
+                } else {
+                    document.body.classList.add('is-floor-plan');
+                }
+            }
+
             loadWizardStep();
         });
 
@@ -144,6 +234,19 @@ let lastRenderedFloorId = null;
 let currentActiveSidebarContext = null; 
 
 function loadWizardStep() {
+    
+    const stepData = wizardSteps[currentStepIndex];
+    
+    // --- THE BULLETPROOF FULL-SCREEN TAG ---
+    // If it's the Elevation tab, Exterior tab, or Review page, turn OFF full screen.
+    const isElevationTab = stepData && stepData.Name && (stepData.Name.toLowerCase().includes('elevation') || stepData.Name.toLowerCase().includes('exterior'));
+    
+    if (isElevationTab || stepData.isReview) {
+        document.body.classList.remove('is-floor-plan');
+    } else {
+        document.body.classList.add('is-floor-plan');
+    }
+
     window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
     wizardSteps.forEach((step, index) => {
         const el = getEl(`step-indicator-${index}`);
@@ -166,21 +269,44 @@ function loadWizardStep() {
     const isElevation = currentStepData.Name.toLowerCase().includes('elevation') || currentStepData.Name.toLowerCase().includes('exterior');
     
     if (isElevation) {
+        const msgBox = getEl('sidebarDefaultMessage');
+        if (msgBox) {
+            msgBox.classList.add('hide-permanently');
+        }
+
         const floorSets = db.OptionSet.filter(os => os.BelongsToFloor === currentStepData.id);
         const targets = floorSets.map(s => ({ id: s.id, type: 'OptionSet' }));
         openSidebarMenu(targets);
     } else {
-        show('sidebarDefaultMessage');
+        // Only bring the text back if they haven't learned to click the gear yet!
+        const msgBox = getEl('sidebarDefaultMessage');
+        if (msgBox && !msgBox.classList.contains('user-learned-to-click')) {
+            msgBox.classList.remove('hide-permanently');
+            show('sidebarDefaultMessage');
+        }
         hide('customizerOptionSets');
     }
     
     getEl('wizardBackBtn').classList.toggle('hidden', currentStepIndex === 0);
     getEl('wizardNextBtn').textContent = currentStepIndex === wizardSteps.length - 2 ? 'Review Design →' : 'Next Step →';
 
-    renderClientCanvas(currentStepData);
+    // --- THE RACE CONDITION FIX ---
+    // Give the browser 50ms to shrink the flexbox BEFORE the canvas measures its new height!
+    setTimeout(() => {
+        renderClientCanvas(currentStepData);
+    }, 50);
 }
 
 function renderClientCanvas(floorData) {
+    if (!floorData) return;
+
+    // --- FULLSCREEN TAG CHECK (Runs on every draw!) ---
+    const isElevationCheck = floorData.Name && (floorData.Name.toLowerCase().includes('elevation') || floorData.Name.toLowerCase().includes('exterior'));
+    if (isElevationCheck) {
+        document.body.classList.remove('is-floor-plan');
+    } else {
+        document.body.classList.add('is-floor-plan');
+    }
     const container = getEl('customizerCanvasContainer').parentElement;
     const canvasWidth = container.offsetWidth;
     const canvasHeight = container.offsetHeight;
@@ -211,7 +337,14 @@ function renderClientCanvas(floorData) {
 
         // 2. Fabric Mouse/Pan Events
         clientCanvas.on('mouse:down', function(opt) {
-            if (opt.target && opt.target.data && opt.target.data.isGear) return;
+            if (opt.target && opt.target.data && opt.target.data.isGear) {
+                if (window.innerWidth <= 767) {
+                    const msgBox = document.getElementById('sidebarDefaultMessage');
+                    if (msgBox) msgBox.classList.add('hide-permanently');
+                    msgBox.classList.add('user-learned-to-click');
+                }
+                return;
+            }
             const evt = opt.e;
             
             // ABORT PANNING IF 2 FINGERS (Let Native Zoom handle it)
@@ -948,6 +1081,8 @@ function openSidebarMenu(context) {
 
     hide('sidebarDefaultMessage');
 
+    // NEW: Permanently hide the instruction text on mobile after first click
+    
     if (Array.isArray(context)) {
         targets = context;
     } else if (typeof context === 'string') {
@@ -1950,6 +2085,16 @@ if (headerTextLink) {
 
 getEl('wizardNextBtn').addEventListener('click', () => {
     const currentStepData = wizardSteps[currentStepIndex];
+    // Add this where your tab/step switching logic happens!
+    const currentFloor = wizardSteps[currentStepIndex];
+    const isElevationTab = currentFloor && currentFloor.Name && (currentFloor.Name.toLowerCase().includes('elevation') || currentFloor.Name.toLowerCase().includes('exterior'));
+    
+    if (isElevationTab) {
+        document.body.classList.remove('is-floor-plan');
+    } else {
+        document.body.classList.add('is-floor-plan');
+    }
+    
     if (!currentStepData.isReview) {
         state.floorSnapshots = state.floorSnapshots || {};
         state.floorSnapshots[currentStepData.id] = captureCanvasSnapshot();
@@ -2031,5 +2176,32 @@ if (zoomResetBtn) zoomResetBtn.addEventListener('click', () => {
     clientCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
     updateGearScales(); // <--- ADDED THIS
 });
+
+// ==========================================
+// BULLETPROOF MOBILE LAYOUT MONITOR
+// ==========================================
+// This runs 4 times a second. It completely ignores clicks/tabs and simply 
+// forces the screen to match whatever page you are currently viewing!
+setInterval(() => {
+    if (window.innerWidth > 767) return; // Only run on mobile
+    if (typeof wizardSteps === 'undefined' || typeof currentStepIndex === 'undefined') return;
+    
+    const step = wizardSteps[currentStepIndex];
+    if (step && step.Name) {
+        const isElev = step.Name.toLowerCase().includes('elevation') || step.Name.toLowerCase().includes('exterior');
+        
+        // If it's Elevation or Review, force Full-Screen OFF
+        if (isElev || step.isReview) {
+            document.body.classList.remove('is-floor-plan');
+        } 
+        // If it's a Floor Plan, force Full-Screen ON
+        else {
+            const wiz = document.getElementById('wizardPage');
+            if (wiz && !wiz.classList.contains('hidden')) {
+                document.body.classList.add('is-floor-plan');
+            }
+        }
+    }
+}, 250);
 
 initializeClientApp();

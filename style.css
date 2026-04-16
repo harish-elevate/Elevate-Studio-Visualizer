@@ -1078,6 +1078,279 @@ button.btn-disabled-gear:hover {
     #wizardPage.hidden, #reviewPage.hidden, #landingPage.hidden {
         display: none !important;
     }
+
+    /* =========================================
+       1. BROCHURE MODAL BUTTON FIX
+       ========================================= */
+    .modal-actions {
+        display: flex !important;
+        flex-direction: row !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+        gap: 15px !important;
+    }
+    .modal-actions button {
+        flex: 1 !important; /* Makes Cancel and Send exactly 50/50 width */
+        margin: 0 !important;
+    }
+    /* Forces Cancel to the left, Submit to the right */
+    #modalCancel { order: 1 !important; }
+    #modalSave, .modal-actions button:last-child { order: 2 !important; }
+
+    /* =========================================
+       2. REVIEW PAGE SIZING FIXES
+       ========================================= */
+    /* Make the Elevation and Floor Plan images massive */
+    #reviewPage canvas, 
+    #reviewPage img {
+        width: 100% !important;
+        height: auto !important;
+        max-height: 50vh !important; /* Lets them take up half the phone screen */
+        object-fit: contain !important;
+        margin-bottom: 15px !important;
+    }
+    /* Shrink the massive selection cards down to compact list items */
+    #reviewPage .card, 
+    #reviewPage .selection-card {
+        padding: 10px 15px !important;
+        font-size: 0.9rem !important;
+        display: flex !important;
+        align-items: center !important;
+        margin-bottom: 8px !important;
+    }
+
+    /* =========================================
+       3. FULL SCREEN CANVAS & DARK OVERLAY
+       ========================================= */
+    /* Let Canvas take the full screen */
+    body.is-floor-plan .canvas-column {
+        flex: 1 1 100% !important;
+        border-bottom: none !important;
+    }
+
+    /* Make the options container invisible so it doesn't block the canvas */
+    body.is-floor-plan .controls-column {
+        position: absolute !important;
+        top: 0; left: 0; right: 0; bottom: 0;
+        height: 100% !important;
+        background: transparent !important;
+        padding: 0 !important;
+        pointer-events: none !important; /* Lets your fingers click through to the canvas */
+        z-index: 100;
+    }
+
+    /* THE DARK MODAL OVERLAY */
+    body.is-floor-plan #customizerOptionSets {
+        position: fixed !important;
+        top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+        background: rgba(0, 0, 0, 0.75) !important; /* Dark transparent background */
+        backdrop-filter: blur(4px); /* Modern blur effect */
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: center !important; /* Centers the cards vertically */
+        padding: 0 !important;
+        pointer-events: auto !important; /* Catches clicks so they don't hit the canvas */
+        z-index: 1000 !important;
+    }
+    
+    /* Ensure it hides when the user closes it */
+    body.is-floor-plan #customizerOptionSets.hidden {
+        display: none !important;
+    }
+
+    /* THE FAKE 'X' CLOSE BUTTON */
+    body.is-floor-plan #customizerOptionSets::before {
+        content: "✕";
+        position: absolute;
+        top: 25px;
+        right: 25px;
+        width: 40px;
+        height: 40px;
+        background: rgba(255,255,255,0.2);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        font-weight: bold;
+        z-index: 1001;
+    }
+
+    /* Center the row of cards inside the dark overlay */
+    body.is-floor-plan #customizerOptionSets > div {
+        align-items: center !important;
+        padding: 0 20px !important;
+    }
+
+    /* =========================================
+       PREMIUM DARK OVERLAY STYLING
+       ========================================= */
+    /* Center a single card perfectly */
+    body.is-floor-plan #customizerOptionSets > div > div:only-child {
+        margin: 0 auto !important;
+    }
+
+    /* Make the title text beautiful, white, and line-free */
+    body.is-floor-plan #customizerOptionSets h3 {
+        border-bottom: none !important;
+        color: #ffffff !important;
+        text-align: center !important;
+        font-size: 1.6rem !important;
+        margin-top: 0 !important;
+        margin-bottom: 25px !important;
+        text-shadow: 0 4px 15px rgba(0,0,0,0.6) !important; /* Makes it pop off the dark background */
+    }
+
+    /* =========================================
+       PREMIUM REVIEW PAGE OVERHAUL
+       ========================================= */
+    /* 1. Remove the squished borders and padding */
+    #reviewPage {
+        padding: 0 !important;
+    }
+    .review-header {
+        padding: 25px 15px 0 15px !important;
+        margin-bottom: 10px !important;
+    }
+    .review-content {
+        border: none !important;
+        border-radius: 0 !important;
+        padding: 0 15px 30px 15px !important;
+        background: transparent !important;
+    }
+
+    /* 2. Force Elevation and Floor Plan images to be MASSIVE */
+    #reviewPage img[alt*="Render"] {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: auto !important;
+        max-height: 60vh !important; /* Lets it take up to 60% of the screen height */
+        margin-bottom: 0 !important;
+    }
+
+    /* 3. Turn the bulky cards into a sleek 2-column grid */
+    .review-grid {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important; /* Exactly 2 per row */
+        gap: 12px !important;
+    }
+    
+    /* 4. Shrink the card contents so they fit beautifully */
+    .review-card > div:first-child {
+        height: 100px !important; /* Compact image height */
+        padding: 5px !important;
+    }
+    .review-card > div:last-child {
+        padding: 10px !important;
+        text-align: center !important;
+    }
+    .review-card > div:last-child > div:nth-child(1) {
+        font-size: 0.65rem !important; /* Smaller category text */
+    }
+    .review-card > div:last-child > div:nth-child(2) {
+        font-size: 0.85rem !important; /* Smaller option text */
+        line-height: 1.2 !important;
+    }
+
+   /* =========================================
+       1. UNBREAKABLE HEADER CENTERING
+       ========================================= */
+    .app-header { 
+        display: flex !important; 
+        align-items: center !important; 
+        height: 60px !important; 
+        background: #ffffff !important; 
+        border-bottom: 1px solid var(--border-color) !important;
+        position: relative !important;
+        z-index: 1000 !important;
+        flex-shrink: 0 !important;
+    }
+    .header-left { 
+        position: absolute !important; 
+        left: 15px !important; 
+        top: 50% !important;
+        transform: translateY(-50%) !important; 
+        margin: 0 !important;
+        z-index: 10 !important;
+    }
+    .header-brand { 
+        position: absolute !important; 
+        left: 50% !important;
+        top: 50% !important;
+        transform: translate(-50%, -50%) !important; /* Perfect dead center */
+        width: max-content !important; /* Forces it onto one line */
+        margin: 0 !important; 
+        padding: 0 !important;
+        z-index: 1 !important;
+    }
+    .header-brand h1 { margin: 0 !important; font-size: 1.05rem !important; }
+    
+    /* Hide the empty right div so it stops messing up flexbox! */
+    .header-right { display: none !important; } 
+
+    /* Force the canvas column to shrink when leaving full-screen */
+    .canvas-column { min-height: 0 !important; }
+
+    /* =========================================
+       2. FIX INSTRUCTION TEXT POSITION
+       ========================================= */
+    body.is-floor-plan #sidebarDefaultMessage {
+        position: fixed !important; /* THE FIX: Pins directly to the phone screen! */
+        left: 15px !important;
+        right: 15px !important;
+        bottom: 100px !important; 
+        padding: 12px !important;
+        background: rgba(255, 255, 255, 0.95) !important;
+        border-radius: 12px !important;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.15) !important;
+        font-size: 0.85rem !important;
+        margin: 0 !important;
+        z-index: 9999 !important; /* Forces it above everything else */
+        text-align: center !important;
+        pointer-events: auto !important;
+    }
+    
+    body.is-floor-plan #sidebarDefaultMessage.hide-permanently {
+        display: none !important;
+    }
+
+    /* =========================================
+       3. REVIEW PAGE BUTTONS & BOUNDARIES
+       ========================================= */
+    #reviewPage {
+        height: calc(100dvh - 55px) !important;
+        box-sizing: border-box !important;
+        padding-bottom: 20px !important; /* Gives the buttons breathing room */
+    }
+
+    /* =========================================
+       4. NEAT REVIEW CARDS (STOP OVERLAP)
+       ========================================= */
+    .review-card {
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        background: #ffffff !important;
+        overflow: hidden !important; /* Absolutely prevents image leaking */
+    }
+    .review-card > div:first-child {
+        height: 100px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        background: #f8f9fa !important; /* Gentle gray background for images */
+        padding: 5px !important;
+    }
+    .review-card > div:first-child img {
+        max-height: 100% !important;
+        width: auto !important;
+        object-fit: contain !important;
+    }
+    .review-card > div:last-child {
+        background: #ffffff !important;
+        z-index: 2 !important; /* Text always stays above the image */
+    }
 }
 
 /* THE FIX: Ensure JavaScript can always hide elements, even if they have !important tags */

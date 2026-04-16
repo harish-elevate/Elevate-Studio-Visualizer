@@ -591,12 +591,16 @@ export function renderCustomizerControls() {
 
     const currentFloor = db.Floor.find(f => f.id === state.currentFloorId);
     if (currentFloor && (currentFloor.Name.toLowerCase().includes('elevation') || currentFloor.Name.toLowerCase().includes('exterior'))) {
+        document.body.classList.remove('is-floor-plan');
+
         const disclaimer = createElement('div', { 
             className: 'ui-disclaimer', 
             textContent: 'Note: This is just a selection of structure only, the colors will be finalized after discussion with our designer.',
             style: 'margin-bottom: 20px; font-style: italic; color: #666; font-size: 0.9rem;' 
         });
         optionSetsContainer.appendChild(disclaimer);
+    } else {
+        document.body.classList.add('is-floor-plan'); // Turn ON full screen
     }
 
     db.OptionSet.filter(os => os.BelongsToFloor === state.currentFloorId).forEach(optionSet => {
