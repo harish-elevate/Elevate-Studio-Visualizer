@@ -1563,7 +1563,7 @@ function renderReviewPage() {
             if (idsArray.length > 0) {
                 idsArray.forEach(optId => {
                     const opt = db.Option.find(o => o.id === optId);
-                    if (opt) {
+                    if (opt && !opt.hide_in_review) { 
                         hasFloorSelections = true;
                         hasAnySelections = true;
                         
@@ -1763,10 +1763,16 @@ function openLeadCaptureModal() {
                 const selectedOptIds = state.customizerSelections[setId] || [];
                 const idsArray = Array.isArray(selectedOptIds) ? selectedOptIds : [selectedOptIds];
                 
-                if (idsArray.length > 0) {
+                // --- THE FIX: Filter the visible options BEFORE building the list! ---
+                const visibleOptIds = idsArray.filter(id => {
+                    const o = db.Option.find(opt => opt.id == id);
+                    return o && !o.hide_in_review;
+                });
+                
+                if (visibleOptIds.length > 0) {
                     hasSelections = true;
                     formattedSelections += `<li style="margin-bottom: 10px;"><strong>${setRef.Name}:</strong><ul style="margin-top: 4px;">`;
-                    idsArray.forEach(optId => {
+                    visibleOptIds.forEach(optId => {
                         const optRef = db.Option.find(o => o.id == optId);
                         if (optRef) {
                             const codeText = optRef.code ? ` <span style="color:#888; font-size:12px;">(${optRef.code})</span>` : '';
@@ -1941,7 +1947,9 @@ async function generatePDFBrochure(clientName, clientEmail, clientPhone, clientC
                 const selectedIds = state.customizerSelections[set.id] || [];
                 (Array.isArray(selectedIds) ? selectedIds : [selectedIds]).forEach(optId => {
                     const opt = db.Option.find(o => o.id === optId);
-                    if (opt) selectedOptions.push({ set, opt });
+                    if (opt && !opt.hide_in_review) {
+                        selectedOptions.push({ set, opt });
+                    }
                 });
             });
 

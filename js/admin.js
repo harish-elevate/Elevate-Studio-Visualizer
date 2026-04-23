@@ -1023,6 +1023,7 @@ export function renderAdminEditorControls() {
                     { label: 'Description (Optional)', id: 'Description', value: option.Description || '' },
                     { label: 'Is Default (Standard Feature)?', id: 'is_default', type: 'checkbox', checked: option.is_default },
                     { label: 'Is System Patch (Hidden from client)', id: 'is_system_patch', type: 'checkbox', checked: isPatch },
+                    { label: 'Hide from Review & Brochure', id: 'hide_in_review', type: 'checkbox', checked: !!option.hide_in_review },
                     { label: 'Auto-Trigger Options (When these are active, patch appears)', id: 'trigger_options', type: 'choices-multiple', options: allOptions, values: option.trigger_options || [], hidden: !isPatch },
                     { label: 'New Thumbnail (Optional)', id: 'Thumbnail', type: 'file', existingValue: option.Thumbnail },
                     { label: 'New Overlay Image (Optional)', id: 'OptionImage', type: 'file', existingValue: option.OptionImage },
@@ -1041,6 +1042,7 @@ export function renderAdminEditorControls() {
                         ...formData,
                         is_default: !!formData.is_default,
                         is_system_patch: !!formData.is_system_patch,
+                        hide_in_review: !!formData.hide_in_review,
                         trigger_options: triggers,
                         requirements: reqs,
                         conflicts: confs
@@ -1134,6 +1136,7 @@ export function renderAdminEditorControls() {
                 { label: 'Option Code (Optional)', id: 'code' },
                 { label: 'Description (Optional)', id: 'Description' },
                 { label: 'Is System Patch (Hidden from client)', id: 'is_system_patch', type: 'checkbox', checked: false },
+                { label: 'Hide from Review & Brochure', id: 'hide_in_review', type: 'checkbox', checked: false },
                 { label: 'Auto-Trigger Options', id: 'trigger_options', type: 'choices-multiple', options: allOptions, hidden: true },
                 { label: 'Thumbnail Image (4:3 recommended)', id: 'Thumbnail', type: 'file' }, 
                 { label: 'Main Overlay Image', id: 'OptionImage', type: 'file' },
@@ -1153,6 +1156,7 @@ export function renderAdminEditorControls() {
                     const newOpt = {
                         ...formData,
                         is_system_patch: !!formData.is_system_patch,
+                        hide_in_review: !!formData.hide_in_review,
                         trigger_options: triggers,
                         requirements: reqs,
                         conflicts: confs,
