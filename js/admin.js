@@ -75,6 +75,32 @@ async function handleOptionImageCrop(option) {
     });
 }
 
+// --- CLOSE MENUS ON OUTSIDE CLICK ---
+document.addEventListener('click', () => {
+    document.querySelectorAll('.option-dropdown.show').forEach(d => d.classList.remove('show'));
+});
+
+// --- NEW THUMBNAIL CROPPER WORKFLOW ---
+async function handleThumbnailCrop(option) {
+    if (!option.Thumbnail) return alert("No thumbnail image found to crop!");
+    
+    const originalImageUrl = `${option.Thumbnail}?t=${new Date().getTime()}`;
+
+    // Pass 4/3 at the end to lock it to a perfect thumbnail ratio!
+    showCropperModal(originalImageUrl, async (blob) => {
+        alert('Uploading cropped thumbnail, please wait...');
+        const newImageUrl = await data.uploadImage(blob);
+        
+        if (newImageUrl) {
+            await data.updateOption(option.id, { Thumbnail: newImageUrl });
+            await loadDataFromSupabase();
+            renderAdminEditor(); 
+        } else {
+            alert('Error: Failed to upload the new image.');
+        }
+    }); 
+}
+
 // --- ADMIN CANVAS (FABRIC.JS ENGINE) ---
 export function renderAdminCanvas() {
     const container = getEl('adminCanvasContainer');
@@ -1050,9 +1076,25 @@ export function renderAdminEditorControls() {
             const isPatch = option.is_system_patch === true;
             const needsOptGear = !isPatch && !isElevationTab && (optionSet.icon_mode === 'option_level') && option.Gear_X === null;
 
-            // EDIT OPTION DETAILS
-            const editOptBtn = createElement('button', { type: 'button', className: 'btn-secondary option-edit-btn', textContent: 'Edit Details' });
-            editOptBtn.addEventListener('click', () => {
+            // ==========================================
+            // BUILD THE "ACTIONS" DROPDOWN MENU
+            // ==========================================
+            const actionsContainer = createElement('div', { className: 'option-actions-container' });
+            // THE FIX: Uses 3 spans to perfectly center text but push the arrow right!
+            const actionsBtn = createElement('button', { 
+                type: 'button', 
+                className: 'option-actions-btn' 
+            }, [
+                createElement('span', { style: 'width: 10px;' }), // Invisible spacer on left
+                createElement('span', { textContent: 'Manage Option' }), // Dead center text
+                createElement('span', { textContent: '▼', style: 'font-size: 0.7rem;' }) // Right arrow
+            ]);
+            const actionsDropdown = createElement('div', { className: 'option-dropdown' });
+
+            // 1. EDIT OPTION DETAILS
+            const editOptBtn = createElement('button', { type: 'button', textContent: 'Edit Details' });
+            editOptBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
                 const allOptions = getAllOptionsForSelect(option.id);
                 showModal('Edit Option Details', [
                     { label: 'Option Name', id: 'Name', value: option.Name },
@@ -1061,7 +1103,7 @@ export function renderAdminEditorControls() {
                     { label: 'Is Default (Standard Feature)?', id: 'is_default', type: 'checkbox', checked: option.is_default },
                     { label: 'Is System Patch (Hidden from client)', id: 'is_system_patch', type: 'checkbox', checked: isPatch },
                     { label: 'Hide from Review & Brochure', id: 'hide_in_review', type: 'checkbox', checked: !!option.hide_in_review },
-                    { label: 'Auto-Trigger Options (When these are active, patch appears)', id: 'trigger_options', type: 'choices-multiple', options: allOptions, values: option.trigger_options || [], hidden: !isPatch },
+                    { label: 'Auto-Trigger Options', id: 'trigger_options', type: 'choices-multiple', options: allOptions, values: option.trigger_options || [], hidden: !isPatch },
                     { label: 'New Thumbnail (Optional)', id: 'Thumbnail', type: 'file', existingValue: option.Thumbnail },
                     { label: 'New Overlay Image (Optional)', id: 'OptionImage', type: 'file', existingValue: option.OptionImage },
                     { label: 'Requirements', id: 'requirements', type: 'choices-multiple', options: allOptions, values: option.requirements },
@@ -1089,68 +1131,108 @@ export function renderAdminEditorControls() {
                     hideModal();
                 };
             });
+            actionsDropdown.appendChild(editOptBtn);
 
-            // MANAGE GALLERY
-            const galleryBtn = createElement('button', { type: 'button', className: 'btn-secondary option-gallery-btn', textContent: 'Manage Gallery' });
-            galleryBtn.addEventListener('click', () => openGalleryManager(option.id));
+            // 2. CROP THUMBNAIL 
+            const cropThumbBtn = createElement('button', { type: 'button', textContent: 'Crop Thumbnail' });
+            cropThumbBtn.addEventListener('click', (e) => { 
+                e.stopPropagation(); 
+                handleThumbnailCrop(option); 
+            });
+            actionsDropdown.appendChild(cropThumbBtn);
 
-            // DELETE OPTION
-            const deleteBtn = createElement('button', { type: 'button', className: 'btn-danger option-delete-btn', textContent: 'Delete' });
-            deleteBtn.addEventListener('click', () => {
+            // 3. ADJUST OVERLAY (Only if NOT Elevation Tab)
+            if (!isElevationTab) {
+                const adjustBtn = createElement('button', { type: 'button', textContent: 'Adjust Overlay' });
+                adjustBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    enterPositionEditMode(option.id);
+                    window.scrollTo(0, 0);
+                });
+                actionsDropdown.appendChild(adjustBtn);
+
+                // 4. ADJUST GEAR ICON 
+                if (optionSet.icon_mode === 'option_level') {
+                    const adjustOptGearBtn = createElement('button', { 
+                        type: 'button', 
+                        textContent: isPatch ? 'Patch (No Gear Needed)' : 'Gear Settings',
+                        disabled: isPatch
+                    });
+                    if (!isPatch) {
+                        adjustOptGearBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            enterGearEditMode(option.id, 'Option');
+                            window.scrollTo(0, 0);
+                        });
+                    }
+                    actionsDropdown.appendChild(adjustOptGearBtn);
+                }
+            }
+
+            // 5. MANAGE GALLERY
+            const galleryBtn = createElement('button', { type: 'button', textContent: 'Manage Gallery' });
+            galleryBtn.addEventListener('click', (e) => { 
+                e.stopPropagation(); 
+                openGalleryManager(option.id); 
+            });
+            actionsDropdown.appendChild(galleryBtn);
+
+            // 6. DELETE OPTION
+            const deleteBtn = createElement('button', { type: 'button', className: 'text-danger', textContent: 'Delete Option' });
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
                 if (confirm(`Delete option "${option.Name}"?`)) {
                     data.deleteOption(option.id).then(() => {
                         loadDataFromSupabase().then(renderAdminEditor);
                     });
                 }
             });
+            actionsDropdown.appendChild(deleteBtn);
 
-            const actions = [ editOptBtn, galleryBtn ];
-            
-            // ADJUST POSITION (OVERLAY)
-            if (!isElevationTab) {
-                const adjustBtn = createElement('button', { type: 'button', className: 'option-adjust-btn', textContent: 'Adjust Overlay' });
-                adjustBtn.addEventListener('click', () => {
-                    enterPositionEditMode(option.id);
-                    window.scrollTo(0, 0);
+            // 7. ASSEMBLE THE MENU
+            actionsContainer.append(actionsBtn, actionsDropdown);
+
+            // Toggle dropdown logic
+            actionsBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.querySelectorAll('.option-dropdown.show').forEach(d => {
+                    if (d !== actionsDropdown) d.classList.remove('show');
                 });
-                actions.push(adjustBtn);
+                actionsDropdown.classList.toggle('show');
+            });
 
-                // ADJUST GEAR ICON (OPTION LEVEL)
-                if (optionSet.icon_mode === 'option_level') {
-                    const adjustOptGearBtn = createElement('button', { 
-                        type: 'button', 
-                        className: `btn-secondary ${isPatch ? 'btn-disabled-gear' : ''}`, 
-                        textContent: isPatch ? 'Patch (No Gear Needed)' : 'Gear Settings',
-                        disabled: isPatch
-                    });
-                    if (!isPatch) {
-                        adjustOptGearBtn.addEventListener('click', () => {
-                            enterGearEditMode(option.id, 'Option');
-                            window.scrollTo(0, 0);
-                        });
-                    }
-                    actions.push(adjustOptGearBtn);
-                }
-            }
-            
-            actions.push(deleteBtn);
-
+            // ==========================================
+            // BUILD THE THUMBNAIL ITEM & WRAPPER
+            // ==========================================
             const thumbItem = createElement('div', { className: 'option-thumbnail-item' }, [ createElement('img', { src: option.Thumbnail, alt: option.Name }) ]);
             if (needsOptGear) {
                 thumbItem.appendChild(createElement('span', { className: 'material-symbols-outlined missing-gear-warning', title: 'Missing Gear Icon', textContent: 'error' }));
             }
 
-            const wrapper = createElement('div', { className: 'admin-thumbnail-wrapper', 'data-id': option.id }, [
+            // THE FIX: We build an array dynamically so we don't accidentally print "null" or empty spaces!
+            const cardElements = [
                 thumbItem,
-                createElement('div', { className: 'admin-thumbnail-name', textContent: option.Name }),
-                createElement('div', { style: 'font-size:0.7rem; color:#666;', textContent: option.code ? `Code: ${option.code}` : '' }),
-                isPatch ? createElement('div', { style: 'font-size:0.75rem; color:var(--primary-color); font-weight:bold; margin-top:2px;' }, 'System Patch') : null,
-                createElement('div', { className: 'admin-thumbnail-actions' }, actions)
-            ]);
+                createElement('div', { className: 'admin-thumbnail-name', style: 'font-size: 1rem !important; font-weight: 800 !important; color: #000; margin-top: 8px; margin-bottom: 4px;', textContent: option.Name })
+            ];
+
+            // Only add the Code HTML if a code actually exists (removes the blank gap!)
+            if (option.code) {
+                cardElements.push(createElement('div', { style: 'font-size:0.75rem; color:#666; margin-bottom: 4px;', textContent: `Code: ${option.code}` }));
+            }
+
+            // Only add the Patch HTML if it is actually a patch (removes the "null" text!)
+            if (isPatch) {
+                cardElements.push(createElement('div', { style: 'font-size:0.75rem; color:var(--primary-color); font-weight:bold; margin-bottom: 4px;', textContent: 'System Patch' }));
+            }
+
+            cardElements.push(actionsContainer);
+
+            const wrapper = createElement('div', { className: 'admin-thumbnail-wrapper', 'data-id': option.id }, cardElements);
             
+            // ELEVATION TAB CLICK LISTENER
             if (isElevationTab) {
                 wrapper.addEventListener('click', (e) => {
-                    if (e.target.closest('button')) return; 
+                    if (e.target.closest('button') || e.target.closest('.option-actions-container')) return; 
                     activeElevationId = option.id; 
                     document.querySelectorAll('.admin-thumbnail-wrapper').forEach(el => el.querySelector('.option-thumbnail-item').classList.remove('selected'));
                     wrapper.querySelector('.option-thumbnail-item').classList.add('selected');

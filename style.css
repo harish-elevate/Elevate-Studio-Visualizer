@@ -1355,3 +1355,73 @@ button.btn-disabled-gear:hover {
 
 /* THE FIX: Ensure JavaScript can always hide elements, even if they have !important tags */
 .hidden { display: none !important; }
+/* =========================================
+   ADMIN OPTION CARD ACTIONS MENU
+   ========================================= */
+.option-actions-container {
+    position: relative;
+    margin-top: 10px;
+    width: 100%;
+}
+.option-actions-btn {
+    width: 100%;
+    background: var(--primary-color) !important; 
+    color: #ffffff !important; 
+    border: none !important; 
+    border-radius: 6px !important;
+    padding: 8px 12px !important;
+    font-size: 0.85rem !important;
+    font-weight: normal !important; /* THE FIX: Removed the bold text */
+    cursor: pointer !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 2px 4px rgba(236, 141, 68, 0.3) !important; 
+}
+
+.option-actions-btn:hover {
+    filter: brightness(0.9) !important; /* Darkens the orange slightly when hovered */
+    box-shadow: 0 4px 8px rgba(236, 141, 68, 0.4) !important;
+}
+.option-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    display: none;
+    flex-direction: column;
+    z-index: 100;
+    margin-top: 5px;
+    overflow: hidden;
+}
+.option-dropdown.show {
+    display: flex;
+}
+.option-dropdown button {
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 1px solid #f1f1f1 !important;
+    padding: 10px 12px !important;
+    text-align: left !important;
+    width: 100% !important;
+    font-size: 0.85rem !important;
+    color: var(--headings-dark) !important;
+    cursor: pointer !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+}
+.option-dropdown button:last-child {
+    border-bottom: none !important;
+}
+.option-dropdown button:hover {
+    background: #f8f9fa !important;
+    color: var(--primary-color) !important;
+}
+.option-dropdown button.text-danger {
+    color: var(--danger-text-color) !important;
+}

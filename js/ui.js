@@ -405,7 +405,8 @@ export function showGalleryViewerModal(galleryData, optionName, optionId) {
     getEl('modal').classList.remove('hidden');
 }
 
-export function showCropperModal(imageSrc, callback) {
+// --- Added aspectRatio parameter ---
+export function showCropperModal(imageSrc, callback, aspectRatio = NaN) {
     const modal = getEl('modal');
     const modalContent = modal.querySelector('.modal-content');
     modalContent.innerHTML = `
@@ -421,7 +422,8 @@ export function showCropperModal(imageSrc, callback) {
     modal.classList.remove('hidden');
 
     const image = document.getElementById('cropperImage');
-    const cropper = new Cropper(image, { aspectRatio: NaN, viewMode: 1, autoCropArea: 0.95 });
+    // --- Plugged the aspectRatio variable in here ---
+    const cropper = new Cropper(image, { aspectRatio: aspectRatio, viewMode: 1, autoCropArea: 0.95 });
 
     document.getElementById('modalSaveCrop').onclick = () => {
         cropper.getCroppedCanvas().toBlob((blob) => {
