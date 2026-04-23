@@ -122,7 +122,10 @@ function renderLandingPage() {
         return;
     }
     
-    db.ModelHome.forEach(model => {
+    // --- THE FIX: Sort by position before drawing the cards! ---
+    const sortedModels = db.ModelHome.sort((a, b) => (a.position || 0) - (b.position || 0));
+    
+    sortedModels.forEach(model => {
         // 1. Check if the model is active (defaults to true if the column is newly added)
         const isActive = model.is_active !== false; 
         

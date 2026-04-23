@@ -737,21 +737,54 @@ export function initAdminDashboard() {
 export function renderAdminDashboard() {
     const grid = getEl('adminModelHomeGrid');
     grid.innerHTML = '';
+    
     if (db.ModelHome.length === 0) { 
         grid.innerHTML = '<p>No models created yet.</p>'; 
         return; 
     }
-    db.ModelHome.map(model => {
-        const card = createElement('a', { className: 'model-home-card', 'data-model-id': model.id, href: '#' }, [
+    
+    // 1. Sort the models by their database position
+    const sortedModels = db.ModelHome.sort((a, b) => (a.position || 0) - (b.position || 0));
+    
+    // 2. Build the cards
+    sortedModels.map(model => {
+        const card = createElement('a', { 
+            className: 'model-home-card', 
+            'data-model-id': model.id, 
+            'data-id': model.id, // <-- Critical for SortableJS to track the ID!
+            href: '#' 
+        }, [
             createElement('img', { src: model.CoverImage, alt: model.Name, className: 'model-home-card-image' }),
             createElement('div', { className: 'model-home-card-name', textContent: model.Name })
         ]);
+        
         card.addEventListener('click', e => { 
             e.preventDefault(); 
             initAdminModelManagement(model.id); 
         });
+        
         return card;
     }).forEach(card => grid.append(card));
+
+    // 3. Make the grid Drag-and-Drop Sortable!
+    new Sortable(grid, {
+        animation: 150,
+        onEnd: async (evt) => {
+            // Give the user visual feedback that it's saving
+            grid.style.opacity = '0.5';
+            
+            // Map the new visual order into an array of database updates
+            const items = Array.from(evt.to.children).map(el => el.dataset.id);
+            const updates = items.map((id, index) => ({ id: parseInt(id), position: index }));
+            
+            // Save to Supabase and reload
+            await data.updatePositions('ModelHome', updates);
+            await loadDataFromSupabase();
+            
+            grid.style.opacity = '1';
+            renderAdminDashboard();
+        }
+    });
 }
 
 export function initAdminModelManagement(modelId) {
@@ -910,18 +943,15 @@ export function renderAdminEditorControls() {
         
         // EDIT OPTION SET
         const editSetBtn = createElement('button', { type: 'button', className: 'btn-secondary', textContent: 'Edit Set' });
+        
         editSetBtn.addEventListener('click', (e) => {
             e.stopPropagation();
+            
+            // 1. Open the Modal (Category AND Code Removed!)
             showModal('Edit Option Set', [
                 { label: 'Set Name', id: 'Name', value: optionSet.Name },
-                { label: 'Code', id: 'code', value: optionSet.code || '' },
-                { label: 'Category', id: 'category', type: 'select', value: optionSet.category, options: [
-                    { value: 'Structural', label: 'Structural' },
-                    { value: 'Exterior', label: 'Exterior' },
-                    { value: 'Interior', label: 'Interior' }
-                ]},
                 { label: 'Sort Order', id: 'position', type: 'number', value: optionSet.position },
-                { label: 'Allow Multiple Selections?', id: 'allow_multiple', type: 'checkbox', checked: optionSet.allow_multiple },
+                { label: 'Allow Multiple Selections?', id: 'allow_multiple_selections', type: 'checkbox', checked: optionSet.allow_multiple_selections },
                 { label: 'Selection Required?', id: 'is_required', type: 'checkbox', checked: optionSet.is_required },
                 { label: 'Icon / Hotspot Mode', id: 'icon_mode', type: 'select', value: optionSet.icon_mode || 'option_level', options: [
                     { value: 'option_level', label: 'Individual Gear for Each Option' },
@@ -929,7 +959,6 @@ export function renderAdminEditorControls() {
                     { value: 'hidden', label: 'Hidden (No Gear)' }
                 ]}
             ], {
-                // --- NEW: THE DANGER ZONE (Places the delete button at the bottom of the modal) ---
                 dangerZone: {
                     buttonText: 'Delete Set',
                     callback: () => {
@@ -937,7 +966,7 @@ export function renderAdminEditorControls() {
                             data.deleteOptionSet(optionSet.id).then(async () => {
                                 await loadDataFromSupabase();
                                 renderAdminEditor();
-                                hideModal(); // Close the modal on success
+                                hideModal(); 
                             }).catch(err => {
                                 console.error("Deletion failed:", err);
                                 alert("Failed to delete set. Ensure ALL options inside this set are deleted first!");
@@ -947,16 +976,24 @@ export function renderAdminEditorControls() {
                 }
             });
             
+            // 2. Define the Save Action
             state.modalSaveCallback = async (formData) => {
-                await data.updateOptionSet(optionSet.id, {
-                    ...formData,
-                    position: parseInt(formData.position) || 0,
-                    allow_multiple: !!formData.allow_multiple,
-                    is_required: !!formData.is_required
-                });
-                await loadDataFromSupabase();
-                renderAdminEditor();
-                hideModal();
+                if (formData.Name) {
+                    
+                    // Force it to be a true/false boolean
+                    formData.allow_multiple_selections = !!formData.allow_multiple_selections;
+                    
+                    // SAFETY CHECK: Delete the bad key if it's somehow still in the form data
+                    if ('allow_multiple' in formData) {
+                        delete formData.allow_multiple;
+                    }
+
+                    // Save to database using optionSet.id
+                    await data.updateOptionSet(optionSet.id, formData);
+                    await loadDataFromSupabase();
+                    renderAdminEditor();
+                    hideModal();
+                }
             };
         });
 
