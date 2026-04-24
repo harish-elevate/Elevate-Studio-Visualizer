@@ -75,10 +75,45 @@ async function handleOptionImageCrop(option) {
     });
 }
 
-// --- CLOSE MENUS ON OUTSIDE CLICK ---
-document.addEventListener('click', () => {
-    document.querySelectorAll('.option-dropdown.show').forEach(d => d.classList.remove('show'));
+// Global click to close and return dropdown to origin
+document.addEventListener('click', (e) => {
+    const openDD = document.querySelector('.option-dropdown.show');
+    if (openDD && !openDD.contains(e.target)) {
+        openDD.classList.remove('show');
+        const originId = openDD.getAttribute('data-origin');
+        const originEl = document.getElementById(originId);
+        if (originEl) {
+            originEl.appendChild(openDD); // Move it back to the sidebar
+        }
+    }
 });
+
+// --- OPTION MENU CLEANUP LOGIC ---
+function closeAllOptionDropdowns() {
+    document.querySelectorAll('.option-dropdown.show').forEach(d => {
+        d.classList.remove('show');
+        // Move it back to its original card
+        const originId = d.getAttribute('data-origin');
+        if (originId) {
+            const originEl = document.getElementById(originId);
+            if (originEl) originEl.appendChild(d);
+        }
+    });
+}
+
+// 1. Close on outside click
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.option-dropdown') && !e.target.closest('.option-actions-btn')) {
+        closeAllOptionDropdowns();
+    }
+});
+
+// 2. Close if ANY part of the page or sidebar is scrolled (True native UI feel)
+document.addEventListener('scroll', (e) => {
+    if (!e.target.closest || !e.target.closest('.option-dropdown')) {
+        closeAllOptionDropdowns();
+    }
+}, true); // The "true" makes it capture scroll events from nested sidebars!
 
 // --- NEW THUMBNAIL CROPPER WORKFLOW ---
 async function handleThumbnailCrop(option) {
@@ -978,7 +1013,6 @@ export function renderAdminEditorControls() {
                 { label: 'Set Name', id: 'Name', value: optionSet.Name },
                 { label: 'Sort Order', id: 'position', type: 'number', value: optionSet.position },
                 { label: 'Allow Multiple Selections?', id: 'allow_multiple_selections', type: 'checkbox', checked: optionSet.allow_multiple_selections },
-                { label: 'Selection Required?', id: 'is_required', type: 'checkbox', checked: optionSet.is_required },
                 { label: 'Icon / Hotspot Mode', id: 'icon_mode', type: 'select', value: optionSet.icon_mode || 'option_level', options: [
                     { value: 'option_level', label: 'Individual Gear for Each Option' },
                     { value: 'set_level', label: 'Single Gear for Whole Set' },
@@ -1006,8 +1040,16 @@ export function renderAdminEditorControls() {
             state.modalSaveCallback = async (formData) => {
                 if (formData.Name) {
                     
-                    // Force it to be a true/false boolean
+                    // Force checkboxes to be true/false booleans
                     formData.allow_multiple_selections = !!formData.allow_multiple_selections;
+                    
+                    
+                    // THE FIX: Force position to be a real integer. If it's blank, default to 0.
+                    if (formData.position === "" || formData.position === null || formData.position === undefined) {
+                        formData.position = 0;
+                    } else {
+                        formData.position = parseInt(formData.position, 10);
+                    }
                     
                     // SAFETY CHECK: Delete the bad key if it's somehow still in the form data
                     if ('allow_multiple' in formData) {
@@ -1058,9 +1100,11 @@ export function renderAdminEditorControls() {
         // CHECK FOR MISSING MASTER GEAR
         const needsSetGear = (!isElevationTab && (!optionSet.icon_mode || optionSet.icon_mode === 'set_level') && optionSet.Gear_X === null);
         
-        const headerText = createElement('h4', { textContent: optionSet.Name });
+        // THE FIX: Added flexbox to vertically align the new red badge with the text!
+        const headerText = createElement('h4', { textContent: optionSet.Name, style: 'display: flex; align-items: center;' });
+        
         if (needsSetGear) {
-            headerText.innerHTML = `${optionSet.Name} <span class="material-symbols-outlined set-warning-icon" title="Missing Master Gear Icon">error</span>`;
+            headerText.innerHTML = `${optionSet.Name} <span style="background: #dc3545; color: white; border-radius: 50%; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; font-weight: 900; font-size: 13px; margin-left: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);" title="Missing Master Gear Icon">!</span>`;
         }
 
         const header = createElement('div', { className: 'option-set-header' }, [
@@ -1072,7 +1116,6 @@ export function renderAdminEditorControls() {
         
         db.Option.filter(o => o.BelongsToOptionSet === optionSet.id).forEach(option => {
             
-            // CHECK SYSTEM PATCH & GEAR STATUS
             const isPatch = option.is_system_patch === true;
             const needsOptGear = !isPatch && !isElevationTab && (optionSet.icon_mode === 'option_level') && option.Gear_X === null;
 
@@ -1080,21 +1123,24 @@ export function renderAdminEditorControls() {
             // BUILD THE "ACTIONS" DROPDOWN MENU
             // ==========================================
             const actionsContainer = createElement('div', { className: 'option-actions-container' });
-            // THE FIX: Uses 3 spans to perfectly center text but push the arrow right!
+            
             const actionsBtn = createElement('button', { 
                 type: 'button', 
                 className: 'option-actions-btn' 
             }, [
-                createElement('span', { style: 'width: 10px;' }), // Invisible spacer on left
-                createElement('span', { textContent: 'Manage Option' }), // Dead center text
-                createElement('span', { textContent: '▼', style: 'font-size: 0.7rem;' }) // Right arrow
+                createElement('span', { style: 'width: 16px;' }),
+                createElement('span', { textContent: 'Manage Option' }),
+                createElement('span', { textContent: '▼', style: 'font-size: 0.7rem;' })
             ]);
+            
             const actionsDropdown = createElement('div', { className: 'option-dropdown' });
 
             // 1. EDIT OPTION DETAILS
             const editOptBtn = createElement('button', { type: 'button', textContent: 'Edit Details' });
             editOptBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
+                e.preventDefault(); e.stopPropagation();
+                closeAllOptionDropdowns(); // <--- FIX: Closes menu before modal opens!
+                
                 const allOptions = getAllOptionsForSelect(option.id);
                 showModal('Edit Option Details', [
                     { label: 'Option Name', id: 'Name', value: option.Name },
@@ -1136,7 +1182,8 @@ export function renderAdminEditorControls() {
             // 2. CROP THUMBNAIL 
             const cropThumbBtn = createElement('button', { type: 'button', textContent: 'Crop Thumbnail' });
             cropThumbBtn.addEventListener('click', (e) => { 
-                e.stopPropagation(); 
+                e.preventDefault(); e.stopPropagation(); 
+                closeAllOptionDropdowns(); // <--- FIX
                 handleThumbnailCrop(option); 
             });
             actionsDropdown.appendChild(cropThumbBtn);
@@ -1145,7 +1192,8 @@ export function renderAdminEditorControls() {
             if (!isElevationTab) {
                 const adjustBtn = createElement('button', { type: 'button', textContent: 'Adjust Overlay' });
                 adjustBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
+                    e.preventDefault(); e.stopPropagation();
+                    closeAllOptionDropdowns(); // <--- FIX
                     enterPositionEditMode(option.id);
                     window.scrollTo(0, 0);
                 });
@@ -1160,7 +1208,8 @@ export function renderAdminEditorControls() {
                     });
                     if (!isPatch) {
                         adjustOptGearBtn.addEventListener('click', (e) => {
-                            e.stopPropagation();
+                            e.preventDefault(); e.stopPropagation();
+                            closeAllOptionDropdowns(); // <--- FIX
                             enterGearEditMode(option.id, 'Option');
                             window.scrollTo(0, 0);
                         });
@@ -1172,7 +1221,8 @@ export function renderAdminEditorControls() {
             // 5. MANAGE GALLERY
             const galleryBtn = createElement('button', { type: 'button', textContent: 'Manage Gallery' });
             galleryBtn.addEventListener('click', (e) => { 
-                e.stopPropagation(); 
+                e.preventDefault(); e.stopPropagation(); 
+                closeAllOptionDropdowns(); // <--- FIX
                 openGalleryManager(option.id); 
             });
             actionsDropdown.appendChild(galleryBtn);
@@ -1180,7 +1230,8 @@ export function renderAdminEditorControls() {
             // 6. DELETE OPTION
             const deleteBtn = createElement('button', { type: 'button', className: 'text-danger', textContent: 'Delete Option' });
             deleteBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
+                e.preventDefault(); e.stopPropagation();
+                closeAllOptionDropdowns(); // <--- FIX
                 if (confirm(`Delete option "${option.Name}"?`)) {
                     data.deleteOption(option.id).then(() => {
                         loadDataFromSupabase().then(renderAdminEditor);
@@ -1192,44 +1243,73 @@ export function renderAdminEditorControls() {
             // 7. ASSEMBLE THE MENU
             actionsContainer.append(actionsBtn, actionsDropdown);
 
-            // Toggle dropdown logic
-            actionsBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                document.querySelectorAll('.option-dropdown.show').forEach(d => {
-                    if (d !== actionsDropdown) d.classList.remove('show');
-                });
-                actionsDropdown.classList.toggle('show');
-            });
-
             // ==========================================
             // BUILD THE THUMBNAIL ITEM & WRAPPER
             // ==========================================
-            const thumbItem = createElement('div', { className: 'option-thumbnail-item' }, [ createElement('img', { src: option.Thumbnail, alt: option.Name }) ]);
+            const thumbItem = createElement('div', { className: 'option-thumbnail-item', style: 'position: relative;' }, [ 
+                createElement('img', { src: option.Thumbnail, alt: option.Name }) 
+            ]);
+            
             if (needsOptGear) {
-                thumbItem.appendChild(createElement('span', { className: 'material-symbols-outlined missing-gear-warning', title: 'Missing Gear Icon', textContent: 'error' }));
+                thumbItem.appendChild(createElement('div', { 
+                    style: 'position: absolute; top: 6px; right: 6px; background: #dc3545; color: white; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.3); z-index: 10;',
+                    title: 'Missing Gear Icon', 
+                    textContent: '!' 
+                }));
             }
 
-            // THE FIX: We build an array dynamically so we don't accidentally print "null" or empty spaces!
             const cardElements = [
                 thumbItem,
                 createElement('div', { className: 'admin-thumbnail-name', style: 'font-size: 1rem !important; font-weight: 800 !important; color: #000; margin-top: 8px; margin-bottom: 4px;', textContent: option.Name })
             ];
-
-            // Only add the Code HTML if a code actually exists (removes the blank gap!)
             if (option.code) {
                 cardElements.push(createElement('div', { style: 'font-size:0.75rem; color:#666; margin-bottom: 4px;', textContent: `Code: ${option.code}` }));
             }
-
-            // Only add the Patch HTML if it is actually a patch (removes the "null" text!)
             if (isPatch) {
                 cardElements.push(createElement('div', { style: 'font-size:0.75rem; color:var(--primary-color); font-weight:bold; margin-bottom: 4px;', textContent: 'System Patch' }));
             }
-
             cardElements.push(actionsContainer);
 
             const wrapper = createElement('div', { className: 'admin-thumbnail-wrapper', 'data-id': option.id }, cardElements);
-            
-            // ELEVATION TAB CLICK LISTENER
+
+            // ==========================================
+            // THE SMART MENU LOGIC (Flip Up vs Drop Down)
+            // ==========================================
+            actionsBtn.addEventListener('click', (e) => {
+                e.preventDefault(); e.stopPropagation();
+                
+                const isCurrentlyOpen = actionsDropdown.classList.contains('show');
+                closeAllOptionDropdowns(); // Wipe the slate clean
+                if (isCurrentlyOpen) return; // If we clicked the button just to close it, stop here
+
+                // Assign IDs so it knows how to return home
+                if (!actionsDropdown.id) actionsDropdown.id = 'dd-' + Math.random().toString(36).substr(2, 9);
+                if (!actionsContainer.id) actionsContainer.id = 'orig-' + Math.random().toString(36).substr(2, 9);
+                actionsDropdown.setAttribute('data-origin', actionsContainer.id);
+
+                // Move to body for complete layout freedom
+                document.body.appendChild(actionsDropdown);
+                
+                // Show it immediately so we can measure it
+                actionsDropdown.classList.add('show');
+                
+                const rect = actionsBtn.getBoundingClientRect();
+                const ddRect = actionsDropdown.getBoundingClientRect();
+                const windowHeight = window.innerHeight;
+
+                // SMART PLACEMENT: Will it hit the bottom of the screen?
+                if (rect.bottom + ddRect.height + 10 > windowHeight) {
+                    // Not enough room! Flip it UP above the button.
+                    actionsDropdown.style.top = `${rect.top - ddRect.height - 5}px`;
+                } else {
+                    // Plenty of room. Drop it DOWN below the button.
+                    actionsDropdown.style.top = `${rect.bottom + 5}px`;
+                }
+                
+                actionsDropdown.style.left = `${rect.left}px`;
+                actionsDropdown.style.width = `${rect.width}px`;
+            });
+
             if (isElevationTab) {
                 wrapper.addEventListener('click', (e) => {
                     if (e.target.closest('button') || e.target.closest('.option-actions-container')) return; 

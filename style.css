@@ -1355,14 +1355,16 @@ button.btn-disabled-gear:hover {
 
 /* THE FIX: Ensure JavaScript can always hide elements, even if they have !important tags */
 .hidden { display: none !important; }
+
 /* =========================================
    ADMIN OPTION CARD ACTIONS MENU
    ========================================= */
 .option-actions-container {
-    position: relative;
+    position: static !important; /* Changed from relative to allow fixed positioning of the dropdown */
     margin-top: 10px;
     width: 100%;
 }
+
 .option-actions-btn {
     width: 100%;
     background: var(--primary-color) !important; 
@@ -1371,7 +1373,7 @@ button.btn-disabled-gear:hover {
     border-radius: 6px !important;
     padding: 8px 12px !important;
     font-size: 0.85rem !important;
-    font-weight: normal !important; /* THE FIX: Removed the bold text */
+    font-weight: normal !important;
     cursor: pointer !important;
     display: flex !important;
     justify-content: space-between !important;
@@ -1381,27 +1383,24 @@ button.btn-disabled-gear:hover {
 }
 
 .option-actions-btn:hover {
-    filter: brightness(0.9) !important; /* Darkens the orange slightly when hovered */
+    filter: brightness(0.9) !important;
     box-shadow: 0 4px 8px rgba(236, 141, 68, 0.4) !important;
 }
+
 .option-dropdown {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    width: 100%;
+    position: fixed !important; /* Fixed relative to the glass of your screen */
     background: #ffffff;
     border: 1px solid var(--border-color);
     border-radius: 6px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
     display: none;
     flex-direction: column;
-    z-index: 100;
-    margin-top: 5px;
-    overflow: hidden;
+    z-index: 1050 !important; /* High enough to be on top, low enough to stay under Modals */
 }
 .option-dropdown.show {
-    display: flex;
+    display: flex !important;
 }
+
 .option-dropdown button {
     background: transparent !important;
     border: none !important;
@@ -1415,13 +1414,16 @@ button.btn-disabled-gear:hover {
     border-radius: 0 !important;
     margin: 0 !important;
 }
+
 .option-dropdown button:last-child {
     border-bottom: none !important;
 }
+
 .option-dropdown button:hover {
     background: #f8f9fa !important;
     color: var(--primary-color) !important;
 }
+
 .option-dropdown button.text-danger {
     color: var(--danger-text-color) !important;
 }
