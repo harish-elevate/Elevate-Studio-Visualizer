@@ -97,12 +97,21 @@ async function initializeClientApp() {
     getEl('globalLoader').classList.remove('hidden');
     await loadDataFromSupabase();
     
-    // --- NEW: INJECT DEFAULT OPTIONS INTO MEMORY ---
+    // --- THE FIX: INJECT ALL DEFAULT OPTIONS INTO MEMORY ---
     db.Option.filter(o => o.is_default).forEach(opt => {
         const setId = opt.BelongsToOptionSet;
-        // If the folder for this option set doesn't exist yet, create it and drop the default in!
+        const parentSet = db.OptionSet.find(s => s.id === setId);
+        
+        // 1. If the folder doesn't exist yet, create it and drop the default in!
         if (!state.customizerSelections[setId]) {
             state.customizerSelections[setId] = [opt.id];
+        } 
+        // 2. If the folder DOES exist, add this second default ONLY if the folder allows multiple!
+        else if (parentSet && parentSet.allow_multiple_selections) {
+            // Prevent duplicates just in case
+            if (!state.customizerSelections[setId].includes(opt.id)) {
+                state.customizerSelections[setId].push(opt.id);
+            }
         }
     });
     // -----------------------------------------------
@@ -1270,9 +1279,13 @@ function evaluateSystemPatches() {
     patches.forEach(patch => {
         let triggers = [];
         let conflicts = [];
+        let requirements = []; // <--- THE UPGRADE
+        
         try {
             triggers = (typeof patch.trigger_options === 'string' ? JSON.parse(patch.trigger_options) : (patch.trigger_options || [])).map(Number);
             conflicts = (typeof patch.conflicts === 'string' ? JSON.parse(patch.conflicts) : (patch.conflicts || [])).map(Number);
+            // Read the prerequisites!
+            requirements = (typeof patch.requirements === 'string' ? JSON.parse(patch.requirements) : (patch.requirements || [])).map(Number); 
         } catch (e) {
             console.warn("Parse error for patch:", patch.Name);
         }
@@ -1281,14 +1294,17 @@ function evaluateSystemPatches() {
 
         const allSelectedIds = Object.values(state.customizerSelections).flat().map(Number);
         
-        // THE FIX: Changed .some() to .every()
-        // Now, it requires EVERY trigger in the list to be active before it turns on.
-        const isTriggered = triggers.every(triggerId => allSelectedIds.includes(triggerId));
+        // 1. THE SPARK (OR): Is at least one trigger active?
+        const isTriggered = triggers.some(triggerId => allSelectedIds.includes(triggerId));
         
-        // Conflicts still use .some() because ANY single conflict should kill the patch.
+        // 2. THE GATEKEEPER (AND): Are ALL requirements met? (If array is empty, this safely returns true)
+        const meetsRequirements = requirements.every(reqId => allSelectedIds.includes(reqId));
+        
+        // 3. THE KILL SWITCH: Are there any conflicts?
         const hasConflict = conflicts.some(conflictId => allSelectedIds.includes(conflictId));
         
-        const shouldBeOn = isTriggered && !hasConflict;
+        // FINAL VERDICT: Must be triggered, meet all requirements, and have zero conflicts.
+        const shouldBeOn = isTriggered && meetsRequirements && !hasConflict;
         
         const patchIsCurrentlyOn = allSelectedIds.includes(patch.id);
         const patchSetId = patch.BelongsToOptionSet;

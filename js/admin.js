@@ -1192,19 +1192,25 @@ export function renderAdminEditorControls() {
 
                 // 4. ADJUST GEAR ICON 
                 if (optionSet.icon_mode === 'option_level') {
+                    
+                    // Step 1: Create the button WITHOUT the disabled attribute
                     const adjustOptGearBtn = createElement('button', { 
                         type: 'button', 
-                        textContent: isPatch ? 'Patch (No Gear Needed)' : 'Gear Settings',
-                        disabled: isPatch
+                        textContent: isPatch ? 'Patch (No Gear Needed)' : 'Gear Settings'
                     });
-                    if (!isPatch) {
+                    
+                    // Step 2: Only apply the disabled property if it is ACTUALLY a patch!
+                    if (isPatch) {
+                        adjustOptGearBtn.disabled = true; 
+                    } else {
                         adjustOptGearBtn.addEventListener('click', (e) => {
                             e.preventDefault(); e.stopPropagation();
-                            closeAllOptionDropdowns(); // <--- FIX
+                            closeAllOptionDropdowns(); 
                             enterGearEditMode(option.id, 'Option');
                             window.scrollTo(0, 0);
                         });
                     }
+                    
                     actionsDropdown.appendChild(adjustOptGearBtn);
                 }
             }
