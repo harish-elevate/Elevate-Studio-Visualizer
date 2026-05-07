@@ -545,36 +545,57 @@ function renderClientCanvas(floorData) {
 }
 
 function getOptionLogicStatus(option) {
+    const allSelectedIds = Object.values(state.customizerSelections).flat();
+    
     // 1. Is it already selected?
-    const currentSelections = state.customizerSelections[option.BelongsToOptionSet];
-    const isSelected = Array.isArray(currentSelections) ? currentSelections.includes(option.id) : currentSelections === option.id;
+    const isSelected = allSelectedIds.includes(option.id);
     if (isSelected) return { status: 'selected' };
 
-    // 2. Does it have an active conflict?
+    // 2. Does it have an active conflict? (THE BI-DIRECTIONAL FIX)
     let activeConflicts = [];
+    
+    // Check A: Does this target option conflict with anything selected?
     if (option.conflicts && option.conflicts.length > 0) {
-        activeConflicts = option.conflicts.filter(conflictId => {
-            const conflictOpt = db.Option.find(o => o.id === conflictId);
-            if (!conflictOpt) return false;
-            const selectedInSet = state.customizerSelections[conflictOpt.BelongsToOptionSet];
-            return Array.isArray(selectedInSet) ? selectedInSet.includes(conflictId) : selectedInSet === conflictId;
+        option.conflicts.forEach(cId => {
+            if (allSelectedIds.includes(cId) && !activeConflicts.includes(cId)) activeConflicts.push(cId);
         });
     }
-    if (activeConflicts.length > 0) return { status: 'conflict', items: activeConflicts };
+    
+    // Check B: Does anything ALREADY selected conflict with this target option?
+    allSelectedIds.forEach(selectedId => {
+        const selectedOpt = db.Option.find(o => o.id === selectedId);
+        if (selectedOpt && selectedOpt.conflicts && selectedOpt.conflicts.includes(option.id)) {
+            if (!activeConflicts.includes(selectedId)) activeConflicts.push(selectedId);
+        }
+    });
+
+    if (activeConflicts.length > 0) {
+        // SILENT ASSASSIN CHECK: Are ALL conflicts just default starting options?
+        const allConflictsAreDefaults = activeConflicts.every(cId => {
+            const cOpt = db.Option.find(o => o.id === cId);
+            return cOpt && cOpt.is_default;
+        });
+        
+        // If even ONE conflict is a hard user-selection, lock the button!
+        if (!allConflictsAreDefaults) {
+            // Filter out the defaults so the warning ONLY lists the user-selected conflicts
+            const hardConflicts = activeConflicts.filter(cId => {
+                const cOpt = db.Option.find(o => o.id === cId);
+                return cOpt && !cOpt.is_default;
+            });
+            // Fallback to activeConflicts if hardConflicts is empty (shouldn't happen, but safe)
+            return { status: 'conflict', items: hardConflicts.length > 0 ? hardConflicts : activeConflicts };
+        }
+    }
 
     // 3. Is it missing a prerequisite?
     let missingReqs = [];
     if (option.requirements && option.requirements.length > 0) {
-        missingReqs = option.requirements.filter(reqId => {
-            const reqOpt = db.Option.find(o => o.id === reqId);
-            if (!reqOpt) return true; 
-            const selectedInSet = state.customizerSelections[reqOpt.BelongsToOptionSet];
-            return Array.isArray(selectedInSet) ? !selectedInSet.includes(reqId) : selectedInSet !== reqId;
-        });
+        missingReqs = option.requirements.filter(reqId => !allSelectedIds.includes(reqId));
     }
     if (missingReqs.length > 0) return { status: 'locked', items: missingReqs };
 
-    // 4. Good to go!
+    // 4. Good to go! (Defaults will be silently handled on click)
     return { status: 'available' };
 }
 
@@ -1346,6 +1367,35 @@ function handleOptionClick(opt, set) {
             state.customizerSelections[set.id] = state.customizerSelections[set.id].filter(id => id !== opt.id);
             if (state.customizerSelections['gallery_picks']) delete state.customizerSelections['gallery_picks'][opt.id];
         } else {
+            // ==========================================
+            // THE FIX: SILENT ASSASSIN FOR DEFAULTS
+            // ==========================================
+            const allSelectedIds = Object.values(state.customizerSelections).flat();
+            let silentConflicts = [];
+            
+            // Collect bi-directional conflicts
+            if (opt.conflicts) {
+                opt.conflicts.forEach(cId => { if (allSelectedIds.includes(cId)) silentConflicts.push(cId); });
+            }
+            allSelectedIds.forEach(selectedId => {
+                const selectedOpt = db.Option.find(o => o.id === selectedId);
+                if (selectedOpt && selectedOpt.conflicts && selectedOpt.conflicts.includes(opt.id)) {
+                    if (!silentConflicts.includes(selectedId)) silentConflicts.push(selectedId);
+                }
+            });
+
+            // Wipe out any conflicts that are default items quietly!
+            silentConflicts.forEach(cId => {
+                const cOpt = db.Option.find(o => o.id === cId);
+                if (cOpt && cOpt.is_default) {
+                    if (state.customizerSelections[cOpt.BelongsToOptionSet]) {
+                        state.customizerSelections[cOpt.BelongsToOptionSet] = state.customizerSelections[cOpt.BelongsToOptionSet].filter(id => id !== cId);
+                    }
+                    if (state.customizerSelections['gallery_picks']) delete state.customizerSelections['gallery_picks'][cId];
+                }
+            });
+            // ==========================================
+
             if (!allowMultiple) {
                 state.customizerSelections[set.id].forEach(existingId => {
                     if (state.customizerSelections['gallery_picks']) delete state.customizerSelections['gallery_picks'][existingId];
@@ -1375,8 +1425,7 @@ function handleOptionClick(opt, set) {
         }
     }
 
-    evaluateSystemPatches(); // <-- NEW: Check for patches before rendering!
-    
+    evaluateSystemPatches(); 
     renderClientCanvas(floorData); 
     openSidebarMenu(currentActiveSidebarContext);
 }
