@@ -585,6 +585,10 @@ function getCollateralDamage(optId, found = new Set()) {
         if (selectedId === optId || found.has(selectedId)) return;
         const opt = db.Option.find(o => o.id === selectedId);
         
+        // THE FIX: The Ghost Pass! 
+        // If the dependent item is a system patch, completely ignore it.
+        if (opt && opt.is_system_patch) return;
+        
         // If this selected option requires the one we are about to delete
         if (opt && opt.requirements && opt.requirements.includes(optId)) {
             found.add(selectedId);
