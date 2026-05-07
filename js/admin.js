@@ -980,10 +980,6 @@ export function renderAdminEditorControls() {
          showModal('Create New Option Set', [
             { label: 'Option Set Name', id: 'Name' },
             { label: 'Allow Multiple Selections', id: 'allow_multiple_selections', type: 'checkbox' },
-            { label: 'Gear Icon Mode', id: 'icon_mode', type: 'select', options: [
-                { value: 'set_level', label: 'Single Icon for Whole Set' },
-                { value: 'option_level', label: 'Individual Icon for Each Option' }
-            ], value: 'set_level' }
         ]);
          state.modalSaveCallback = async formData => {
             if (formData.Name) {
@@ -1013,11 +1009,6 @@ export function renderAdminEditorControls() {
                 { label: 'Set Name', id: 'Name', value: optionSet.Name },
                 { label: 'Sort Order', id: 'position', type: 'number', value: optionSet.position },
                 { label: 'Allow Multiple Selections?', id: 'allow_multiple_selections', type: 'checkbox', checked: optionSet.allow_multiple_selections },
-                { label: 'Icon / Hotspot Mode', id: 'icon_mode', type: 'select', value: optionSet.icon_mode || 'option_level', options: [
-                    { value: 'option_level', label: 'Individual Gear for Each Option' },
-                    { value: 'set_level', label: 'Single Gear for Whole Set' },
-                    { value: 'hidden', label: 'Hidden (No Gear)' }
-                ]}
             ], {
                 dangerZone: {
                     buttonText: 'Delete Set',
