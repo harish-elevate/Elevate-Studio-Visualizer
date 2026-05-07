@@ -570,20 +570,19 @@ function getOptionLogicStatus(option) {
     });
 
     if (activeConflicts.length > 0) {
-        // SILENT ASSASSIN CHECK: Are ALL conflicts just default starting options?
-        const allConflictsAreDefaults = activeConflicts.every(cId => {
+        // SILENT ASSASSIN CHECK: Are ALL conflicts just default starting options OR system patches?
+        const allConflictsAreSilent = activeConflicts.every(cId => {
             const cOpt = db.Option.find(o => o.id === cId);
-            return cOpt && cOpt.is_default;
+            return cOpt && (cOpt.is_default || cOpt.is_system_patch); // THE FIX: Added system patches!
         });
         
         // If even ONE conflict is a hard user-selection, lock the button!
-        if (!allConflictsAreDefaults) {
-            // Filter out the defaults so the warning ONLY lists the user-selected conflicts
+        if (!allConflictsAreSilent) {
+            // Filter out the silent ones so the warning ONLY lists the user-selected conflicts
             const hardConflicts = activeConflicts.filter(cId => {
                 const cOpt = db.Option.find(o => o.id === cId);
-                return cOpt && !cOpt.is_default;
+                return cOpt && !cOpt.is_default && !cOpt.is_system_patch; // THE FIX: Hide patches from the warning list
             });
-            // Fallback to activeConflicts if hardConflicts is empty (shouldn't happen, but safe)
             return { status: 'conflict', items: hardConflicts.length > 0 ? hardConflicts : activeConflicts };
         }
     }
@@ -1347,6 +1346,53 @@ function evaluateSystemPatches() {
     });
 }
 
+// --- AUTO-RESTORE DEFAULTS ENGINE ---
+function evaluateDefaults() {
+    const allSelectedIds = Object.values(state.customizerSelections).flat().map(Number);
+    const defaults = db.Option.filter(o => o.is_default);
+
+    defaults.forEach(defOpt => {
+        const setId = defOpt.BelongsToOptionSet;
+        const parentSet = db.OptionSet.find(s => s.id === setId);
+        if (!parentSet) return;
+
+        // Is it already on? Skip it.
+        const isSelected = state.customizerSelections[setId] && state.customizerSelections[setId].includes(defOpt.id);
+        if (isSelected) return;
+
+        // Check if anything is currently blocking it
+        let hasConflict = false;
+        if (defOpt.conflicts) {
+            hasConflict = defOpt.conflicts.some(cId => allSelectedIds.includes(cId));
+        }
+        if (!hasConflict) {
+            allSelectedIds.forEach(selectedId => {
+                const selectedOpt = db.Option.find(o => o.id === selectedId);
+                if (selectedOpt && selectedOpt.conflicts && selectedOpt.conflicts.includes(defOpt.id)) {
+                    hasConflict = true;
+                }
+            });
+        }
+
+        // If there are NO conflicts blocking it...
+        if (!hasConflict) {
+            // RULE: If the folder is single-choice, and currently empty, it MUST snap back to default!
+            if (!parentSet.allow_multiple_selections) {
+                if (!state.customizerSelections[setId] || state.customizerSelections[setId].length === 0) {
+                    state.customizerSelections[setId] = [defOpt.id];
+                }
+            } 
+            // RULE: If the folder is multi-choice, but the default was pushed out by a conflict, snap it back in!
+            else {
+                if (!state.customizerSelections[setId]) state.customizerSelections[setId] = [];
+                if (!state.customizerSelections[setId].includes(defOpt.id)) {
+                    state.customizerSelections[setId].push(defOpt.id);
+                }
+            }
+        }
+    });
+}
+
 function handleOptionClick(opt, set) {
     const floorData = wizardSteps[currentStepIndex];
     const isElevation = floorData.Name.toLowerCase().includes('elevation') || floorData.Name.toLowerCase().includes('exterior');
@@ -1425,6 +1471,7 @@ function handleOptionClick(opt, set) {
         }
     }
 
+    evaluateDefaults();
     evaluateSystemPatches(); 
     renderClientCanvas(floorData); 
     openSidebarMenu(currentActiveSidebarContext);
