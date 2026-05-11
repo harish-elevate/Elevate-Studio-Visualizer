@@ -210,7 +210,7 @@ function setupAdminEventListeners() {
             }
         }
         // Option Set Management (Create Only - Edit/Delete handled in admin.js)
-        else if (button.id === 'createOptionSetBtn') {
+        /*else if (button.id === 'createOptionSetBtn') {
              showModal('Create New Option Set', [
                 { label: 'Option Set Name', id: 'Name' },
                 { label: 'Allow Multiple Selections', id: 'allow_multiple_selections', type: 'checkbox' }
@@ -226,7 +226,7 @@ function setupAdminEventListeners() {
                     hideModal();
                 }
              };
-        }
+        }*/
         // --- NOTE: ALL OPTION LOGIC REMOVED FROM HERE TO PREVENT DOUBLE MODALS ---
         // (Add, Edit, Delete, Adjust Position are now in admin.js)
     });

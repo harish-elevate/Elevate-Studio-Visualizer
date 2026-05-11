@@ -980,12 +980,23 @@ export function renderAdminEditorControls() {
          showModal('Create New Option Set', [
             { label: 'Option Set Name', id: 'Name' },
             { label: 'Allow Multiple Selections', id: 'allow_multiple_selections', type: 'checkbox' },
+            // Inject the Gear Mode selector directly into the creation form
+            { 
+                label: 'Gear Icon Layout Mode', 
+                id: 'icon_mode', 
+                type: 'select', 
+                options: [
+                    { label: 'Single Blanket Gear for Entire Set', value: 'set_level' },
+                    { label: 'Individual Gears for Each Option', value: 'option_level' }
+                ] 
+            }
         ]);
          state.modalSaveCallback = async formData => {
             if (formData.Name) {
                 formData.BelongsToFloor = state.currentFloorId;
                 formData.position = db.OptionSet.filter(os => os.BelongsToFloor === state.currentFloorId).length;
                 formData.allow_multiple_selections = !!formData.allow_multiple_selections; 
+                // Capture the selected dropdown value cleanly with a safe fallback
                 formData.icon_mode = formData.icon_mode || 'set_level';
                 await data.addOptionSet(formData);
                 await loadDataFromSupabase();
@@ -1004,11 +1015,21 @@ export function renderAdminEditorControls() {
         editSetBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             
-            // 1. Open the Modal (Category AND Code Removed!)
+            // 1. Open the Modal with the added Gear Mode selector
             showModal('Edit Option Set', [
                 { label: 'Set Name', id: 'Name', value: optionSet.Name },
                 { label: 'Sort Order', id: 'position', type: 'number', value: optionSet.position },
                 { label: 'Allow Multiple Selections?', id: 'allow_multiple_selections', type: 'checkbox', checked: optionSet.allow_multiple_selections },
+                { 
+                    label: 'Gear Icon Layout Mode', 
+                    id: 'icon_mode', 
+                    type: 'select', 
+                    value: optionSet.icon_mode || 'set_level',
+                    options: [
+                        { label: 'Single Blanket Gear for Entire Set', value: 'set_level' },
+                        { label: 'Individual Gears for Each Option', value: 'option_level' }
+                    ] 
+                }
             ], {
                 dangerZone: {
                     buttonText: 'Delete Set',
