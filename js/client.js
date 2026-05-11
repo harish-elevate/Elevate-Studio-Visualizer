@@ -824,6 +824,7 @@ window.triggerLogicModal = (targetOptId, type, itemIdsString) => {
 
         // Redraw canvas and sidebar
         evaluateSystemPatches(); // <-- NEW: Check for patches!
+        evaluateDefaults(); // <-- NEW: Check for defaults!
         
         renderClientCanvas(floorData);
         openSidebarMenu(currentActiveSidebarContext); 
@@ -912,6 +913,7 @@ window.triggerCollateralModal = (targetOpt, collateralItems, actionType, set) =>
         // 4. WAKE THE GHOST ENGINE
         // Memory is perfectly updated. Let the engine check if patches need to adapt.
         evaluateSystemPatches();
+        evaluateDefaults();
 
         // 5. Redraw the world
         const floorData = wizardSteps[currentStepIndex];
@@ -1166,7 +1168,9 @@ function openSidebarMenu(context) {
         grid.style.cssText = `display: grid; grid-template-columns: ${isElevation ? '1fr 1fr' : '1fr'}; gap: 15px; margin-bottom: 30px;`;
 
         options.forEach(opt => {
-            if (opt.is_system_patch) return; // <-- NEW: Completely hides patches from the sidebar!
+            // RESTORED ORIGINAL INTENT: System patches AND Default baseline options 
+            // are strictly forbidden from generating user-facing UI cards.
+            if (opt.is_system_patch || opt.is_default) return; 
 
             const isSelected = (state.customizerSelections[set.id] || []).includes(opt.id);
             const card = document.createElement('div');
@@ -1471,8 +1475,8 @@ function handleOptionClick(opt, set) {
         }
     }
 
-    evaluateDefaults();
-    evaluateSystemPatches(); 
+    evaluateSystemPatches();
+    evaluateDefaults();  
     renderClientCanvas(floorData); 
     openSidebarMenu(currentActiveSidebarContext);
 }
