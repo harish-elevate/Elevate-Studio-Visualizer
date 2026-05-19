@@ -241,76 +241,17 @@ function buildWizardProgressBar() {
     });
 }
 
+// --- MODULE STATE VARIABLES ---
 let clientCanvas = null;
 let lastRenderedFloorId = null; 
 let currentActiveSidebarContext = null; 
+let currentRenderContextId = null; // <-- Keep this to stop tab bleeding!
 
-function loadWizardStep() {
-    
-    const stepData = wizardSteps[currentStepIndex];
-    
-    // --- THE BULLETPROOF FULL-SCREEN TAG ---
-    // If it's the Elevation tab, Exterior tab, or Review page, turn OFF full screen.
-    const isElevationTab = stepData && stepData.Name && (stepData.Name.toLowerCase().includes('elevation') || stepData.Name.toLowerCase().includes('exterior'));
-    
-    if (isElevationTab || stepData.isReview) {
-        document.body.classList.remove('is-floor-plan');
-    } else {
-        document.body.classList.add('is-floor-plan');
-    }
-
-    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
-    wizardSteps.forEach((step, index) => {
-        const el = getEl(`step-indicator-${index}`);
-        el.classList.remove('active', 'completed');
-        if (index < currentStepIndex) el.classList.add('completed');
-        if (index === currentStepIndex) el.classList.add('active');
-    });
-
-    const currentStepData = wizardSteps[currentStepIndex];
-
-    if (currentStepData.isReview) {
-        hide('wizardPage');
-        show('reviewPage');
-        renderReviewPage();
-        return;
-    }
-
-    state.currentFloorId = currentStepData.id;
-    
-    const isElevation = currentStepData.Name.toLowerCase().includes('elevation') || currentStepData.Name.toLowerCase().includes('exterior');
-    
-    if (isElevation) {
-        const msgBox = getEl('sidebarDefaultMessage');
-        if (msgBox) {
-            msgBox.classList.add('hide-permanently');
-        }
-
-        const floorSets = db.OptionSet.filter(os => os.BelongsToFloor === currentStepData.id);
-        const targets = floorSets.map(s => ({ id: s.id, type: 'OptionSet' }));
-        openSidebarMenu(targets);
-    } else {
-        // Only bring the text back if they haven't learned to click the gear yet!
-        const msgBox = getEl('sidebarDefaultMessage');
-        if (msgBox && !msgBox.classList.contains('user-learned-to-click')) {
-            msgBox.classList.remove('hide-permanently');
-            show('sidebarDefaultMessage');
-        }
-        hide('customizerOptionSets');
-    }
-    
-    getEl('wizardBackBtn').classList.toggle('hidden', currentStepIndex === 0);
-    getEl('wizardNextBtn').textContent = currentStepIndex === wizardSteps.length - 2 ? 'Review Design →' : 'Next Step →';
-
-    // --- THE RACE CONDITION FIX ---
-    // Give the browser 50ms to shrink the flexbox BEFORE the canvas measures its new height!
-    setTimeout(() => {
-        renderClientCanvas(currentStepData);
-    }, 50);
-}
 
 function renderClientCanvas(floorData) {
     if (!floorData) return;
+
+    currentRenderContextId = Date.now(); // <-- ADD THIS LINE! This is the fast anti-bleed fix.
 
     // --- FULLSCREEN TAG CHECK (Runs on every draw!) ---
     const isElevationCheck = floorData.Name && (floorData.Name.toLowerCase().includes('elevation') || floorData.Name.toLowerCase().includes('exterior'));
@@ -319,6 +260,7 @@ function renderClientCanvas(floorData) {
     } else {
         document.body.classList.add('is-floor-plan');
     }
+    
     const container = getEl('customizerCanvasContainer').parentElement;
     const canvasWidth = container.offsetWidth;
     const canvasHeight = container.offsetHeight;
@@ -500,11 +442,14 @@ function renderClientCanvas(floorData) {
         return;
     }
 
+    // --- SECURE CONTEXT LOCKING ---
+    const executionContextToken = Date.now();
+    currentRenderContextId = executionContextToken;
+
     lastRenderedFloorId = floorData.id;
     clientCanvas.lastImageUrl = imageUrl;
     
     clientCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]); 
-    
     clientCanvas.clear();
 
     if (!imageUrl) {
@@ -517,12 +462,20 @@ function renderClientCanvas(floorData) {
         clientCanvas.bgMetrics = { offsetX: 0, offsetY: 0, width: canvasWidth, height: canvasHeight };
         
         if (!isElevation) renderGearIcons(floorData, clientCanvas.bgMetrics);
+        
         return;
     }
 
     const image = new Image();
     image.crossOrigin = "anonymous";
+    
     image.onload = () => {
+        // FAILSAFE: Abort rendering execution if user changed active layout tabs mid-fetch
+        if (currentRenderContextId !== executionContextToken) {
+            
+            return;
+        }
+
         const scale = Math.min(canvasWidth / image.width, canvasHeight / image.height);
         const bgOffsetX = (canvasWidth - image.width * scale) / 2;
         const bgOffsetY = (canvasHeight - image.height * scale) / 2;
@@ -534,14 +487,84 @@ function renderClientCanvas(floorData) {
             scaleX: scale, scaleY: scale, left: bgOffsetX, top: bgOffsetY
         });
 
-        renderActiveOverlays(floorData, clientCanvas.bgMetrics).then(() => {
-            if (!isElevation) renderGearIcons(floorData, clientCanvas.bgMetrics);
-        });
+        renderActiveOverlays(floorData, clientCanvas.bgMetrics);
+        if (!isElevation) {
+            renderGearIcons(floorData, clientCanvas.bgMetrics);
+        }
     };
+    
     image.onerror = () => {
-        clientCanvas.setBackgroundColor('#f0f0f0', clientCanvas.renderAll.bind(clientCanvas));
+        if (currentRenderContextId === executionContextToken) {
+            clientCanvas.setBackgroundColor('#f0f0f0', clientCanvas.renderAll.bind(clientCanvas));
+            
+        }
     };
+    
     image.src = imageUrl;
+} 
+
+function loadWizardStep() {
+    
+    const stepData = wizardSteps[currentStepIndex];
+    
+    // --- THE BULLETPROOF FULL-SCREEN TAG ---
+    // If it's the Elevation tab, Exterior tab, or Review page, turn OFF full screen.
+    const isElevationTab = stepData && stepData.Name && (stepData.Name.toLowerCase().includes('elevation') || stepData.Name.toLowerCase().includes('exterior'));
+    
+    if (isElevationTab || stepData.isReview) {
+        document.body.classList.remove('is-floor-plan');
+    } else {
+        document.body.classList.add('is-floor-plan');
+    }
+
+    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    wizardSteps.forEach((step, index) => {
+        const el = getEl(`step-indicator-${index}`);
+        el.classList.remove('active', 'completed');
+        if (index < currentStepIndex) el.classList.add('completed');
+        if (index === currentStepIndex) el.classList.add('active');
+    });
+
+    const currentStepData = wizardSteps[currentStepIndex];
+
+    if (currentStepData.isReview) {
+        hide('wizardPage');
+        show('reviewPage');
+        renderReviewPage();
+        return;
+    }
+
+    state.currentFloorId = currentStepData.id;
+    
+    const isElevation = currentStepData.Name.toLowerCase().includes('elevation') || currentStepData.Name.toLowerCase().includes('exterior');
+    
+    if (isElevation) {
+        const msgBox = getEl('sidebarDefaultMessage');
+        if (msgBox) {
+            msgBox.classList.add('hide-permanently');
+        }
+
+        const floorSets = db.OptionSet.filter(os => os.BelongsToFloor === currentStepData.id);
+        const targets = floorSets.map(s => ({ id: s.id, type: 'OptionSet' }));
+        openSidebarMenu(targets);
+    } else {
+        // Only bring the text back if they haven't learned to click the gear yet!
+        const msgBox = getEl('sidebarDefaultMessage');
+        if (msgBox && !msgBox.classList.contains('user-learned-to-click')) {
+            msgBox.classList.remove('hide-permanently');
+            show('sidebarDefaultMessage');
+        }
+        hide('customizerOptionSets');
+    }
+    
+    getEl('wizardBackBtn').classList.toggle('hidden', currentStepIndex === 0);
+    getEl('wizardNextBtn').textContent = currentStepIndex === wizardSteps.length - 2 ? 'Review Design →' : 'Next Step →';
+
+    // --- THE RACE CONDITION FIX ---
+    // Give the browser 50ms to shrink the flexbox BEFORE the canvas measures its new height!
+    setTimeout(() => {
+        renderClientCanvas(currentStepData);
+    }, 50);
 }
 
 function getOptionLogicStatus(option) {
@@ -925,51 +948,62 @@ window.triggerCollateralModal = (targetOpt, collateralItems, actionType, set) =>
     show('modal');
 };
 
-async function renderActiveOverlays(floorData, bgMetrics) {
+// --- SECURED OVERLAY ENGINE ---
+// --- RESTORED FAST OVERLAYS (With Z-Index Protection) ---
+function renderActiveOverlays(floorData, bgMetrics) {
+    const activeContextToken = currentRenderContextId; 
     const isElevation = floorData.Name.toLowerCase().includes('elevation') || floorData.Name.toLowerCase().includes('exterior');
     const optionSets = db.OptionSet.filter(os => os.BelongsToFloor === floorData.id);
     const selectedIds = Object.values(state.customizerSelections).flat();
     
     const optionsToDraw = db.Option
-        .filter(opt => optionSets.map(s => s.id).includes(opt.BelongsToOptionSet) && selectedIds.includes(opt.id))
-        .sort((a, b) => {
-            // INVERTED SORT: Draw highest numbers first (bottom), lowest numbers last (top)
-            const valA = a.layer_order !== null && a.layer_order !== undefined ? Number(a.layer_order) : Number(a.position || 0);
-            const valB = b.layer_order !== null && b.layer_order !== undefined ? Number(b.layer_order) : Number(b.position || 0);
-            return valB - valA; // <--- The magic flip
-        });
+        .filter(opt => optionSets.map(s => s.id).includes(opt.BelongsToOptionSet) && selectedIds.includes(opt.id));
 
-    for (const option of optionsToDraw) {
-        if (!option.OptionImage || option.OptionImage === 'null') continue;
+    optionsToDraw.forEach(option => {
+        if (!option.OptionImage || option.OptionImage === 'null') return;
         
-        await new Promise((resolve) => {
-            fabric.Image.fromURL(option.OptionImage, (img) => {
-                let left = bgMetrics.offsetX + (option.X_Position / 100) * bgMetrics.width;
-                let top = bgMetrics.offsetY + (option.Y_Position / 100) * bgMetrics.height;
-                let scaleX = ((option.Width / 100) * bgMetrics.width) / (img.width || 1);
-                let scaleY = ((option.Height / 100) * bgMetrics.height) / (img.height || 1);
+        fabric.Image.fromURL(option.OptionImage, (img) => {
+            if (currentRenderContextId !== activeContextToken) return;
 
-                if (isElevation) {
-                    left = bgMetrics.offsetX;
-                    top = bgMetrics.offsetY;
-                    scaleX = bgMetrics.width / (img.width || 1);
-                    scaleY = bgMetrics.height / (img.height || 1);
-                }
+            let left = bgMetrics.offsetX + (option.X_Position / 100) * bgMetrics.width;
+            let top = bgMetrics.offsetY + (option.Y_Position / 100) * bgMetrics.height;
+            let scaleX = ((option.Width / 100) * bgMetrics.width) / (img.width || 1);
+            let scaleY = ((option.Height / 100) * bgMetrics.height) / (img.height || 1);
 
-                const layerVal = option.layer_order !== null && option.layer_order !== undefined 
-                    ? option.layer_order 
-                    : (option.position || 0);
+            if (isElevation) {
+                left = bgMetrics.offsetX;
+                top = bgMetrics.offsetY;
+                scaleX = bgMetrics.width / (img.width || 1);
+                scaleY = bgMetrics.height / (img.height || 1);
+            }
 
-                img.set({
-                    left: left, top: top, scaleX: scaleX, scaleY: scaleY,
-                    selectable: false, evented: false,
-                    data: { isOverlay: true, optionId: option.id, layerOrder: Number(layerVal) }
-                });
-                clientCanvas.add(img);
-                resolve();
-            }, { crossOrigin: 'anonymous' });
-        });
-    }
+            const layerVal = option.layer_order !== null && option.layer_order !== undefined 
+                ? option.layer_order 
+                : (option.position || 0);
+
+            img.set({
+                left: left, top: top, scaleX: scaleX, scaleY: scaleY,
+                selectable: false, evented: false,
+                data: { isOverlay: true, optionId: option.id, layerOrder: Number(layerVal) }
+            });
+            clientCanvas.add(img);
+
+            // 1. Sort the floor plan pieces logically
+            const overlays = clientCanvas.getObjects().filter(o => o.data && o.data.isOverlay);
+            overlays.sort((a, b) => {
+                const valA = Number(a.data.layerOrder) || 0;
+                const valB = Number(b.data.layerOrder) || 0;
+                return valB - valA; 
+            });
+            overlays.forEach(obj => clientCanvas.bringToFront(obj));
+
+            // 2. THE FIX: Force all orange buttons to the absolute front!
+            const gears = clientCanvas.getObjects().filter(o => o.data && o.data.isGear);
+            gears.forEach(g => clientCanvas.bringToFront(g));
+
+            clientCanvas.requestRenderAll();
+        }, { crossOrigin: 'anonymous' });
+    });
 }
 
 const getGearKey = (x, y) => `${Number(x).toFixed(4)},${Number(y).toFixed(4)}`;
@@ -1053,6 +1087,7 @@ function renderGearIcons(floorData, bgMetrics) {
             img.on('mousedown', () => openSidebarMenu(keyString));
             
             clientCanvas.add(img);
+            clientCanvas.requestRenderAll();
         });
     });
 }
@@ -1141,6 +1176,7 @@ function openSidebarMenu(context) {
     const container = getEl('customizerOptionSets');
     container.innerHTML = ''; 
     const renderData = {}; 
+    
 
     targets.forEach(target => {
         const optRef = target.type === 'Option' ? db.Option.find(o => o.id === target.id) : null;
@@ -1729,14 +1765,14 @@ function renderReviewPage() {
     }
 }
 
-async function getBase64ImageFromUrl(imageUrl) {
+// --- HARDENED NETWORK LOADER (5-Second Timeout Buffer) ---
+async function getBase64ImageFromUrl(imageUrl, timeoutBufferLimit = 5000) {
     return new Promise((resolve) => {
         if (!imageUrl || imageUrl === 'null') return resolve(null); 
         
         const img = new Image();
         let isDone = false;
         
-        // Failsafe closer: ensures we only resolve once
         const finish = (res) => { 
             if (!isDone) { 
                 isDone = true; 
@@ -1744,12 +1780,18 @@ async function getBase64ImageFromUrl(imageUrl) {
             } 
         };
 
-        // Only apply CORS rules to external internet links, not local data
         if (!imageUrl.startsWith('data:')) {
             img.crossOrigin = 'Anonymous';
         }
 
+        // Establish secure timeout bounds
+        const networkTimeoutWatcher = setTimeout(() => {
+            console.warn(`[Asset Fetch Timeout]: Target link failed to settle within ${timeoutBufferLimit}ms boundary:`, imageUrl);
+            finish(null);
+        }, timeoutBufferLimit);
+
         img.onload = () => {
+            clearTimeout(networkTimeoutWatcher); // Clear timer safely upon success
             try {
                 const canvas = document.createElement('canvas');
                 let width = img.width;
@@ -1778,11 +1820,13 @@ async function getBase64ImageFromUrl(imageUrl) {
                 finish(null);
             }
         };
-        img.onerror = () => finish(null);
+        
+        img.onerror = () => {
+            clearTimeout(networkTimeoutWatcher);
+            finish(null);
+        };
+        
         img.src = imageUrl;
-
-        // THE STRICT FAILSAFE: If it takes longer than 2 seconds, skip it!
-        setTimeout(() => finish(null), 2000); 
     });
 }
 
@@ -1790,11 +1834,15 @@ function openLeadCaptureModal() {
     // 1. Updated Title
     getEl('modalTitle').textContent = 'Where To Send Your Brochure';
     
+    // 2. Restored Split First Name / Last Name Layout
     getEl('modalForm').innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 15px; margin-top: 15px;">
             <p style="color: #666; font-size: 0.9rem; margin-bottom: 5px;">Please enter your details to receive your custom home brochure via email.</p>
             
-            <input type="text" id="pdfClientName" autocomplete="name" placeholder="Full Name (Required)" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);" required>
+            <div style="display: flex; gap: 10px;">
+                <input type="text" id="pdfFirstName" autocomplete="given-name" placeholder="First Name (Required)" style="flex: 1; padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);" required>
+                <input type="text" id="pdfLastName" autocomplete="family-name" placeholder="Last Name (Required)" style="flex: 1; padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);" required>
+            </div>
             <input type="email" id="pdfClientEmail" autocomplete="email" placeholder="Email Address (Required)" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);" required>
             <input type="tel" id="pdfClientPhone" autocomplete="tel" placeholder="Phone Number (Optional)" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body);">
             <select id="pdfClientCity" style="padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-family: var(--font-body); background-color: #fff;" required>
@@ -1817,8 +1865,6 @@ function openLeadCaptureModal() {
     `;
     
     const saveBtn = getEl('modalSave');
-    
-    // 3. Updated Button Text
     saveBtn.textContent = 'Send My Brochure';
     saveBtn.classList.remove('hidden');
     
@@ -1826,34 +1872,36 @@ function openLeadCaptureModal() {
     saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
     
     getEl('modalCancel').onclick = () => hide('modal');
-
-    // ... The rest of your newSaveBtn.addEventListener logic stays EXACTLY the same!
-    
-    getEl('modalCancel').onclick = () => hide('modal');
     
     newSaveBtn.addEventListener('click', async () => {
-        const nameInput = getEl('pdfClientName');
+        const firstNameInput = getEl('pdfFirstName');
+        const lastNameInput = getEl('pdfLastName');
         const emailInput = getEl('pdfClientEmail');
         const phoneInput = getEl('pdfClientPhone');
         const cityInput = getEl('pdfClientCity');
 
-        const name = nameInput.value.trim();
+        const firstName = firstNameInput.value.trim();
+        const lastName = lastNameInput.value.trim();
         const email = emailInput.value.trim();
         const phone = phoneInput.value.trim();
         const city = cityInput.value;
 
-        if (!name || !email || !city) {
-            alert("Please provide your Name, Email, and City to download your custom brochure.");
-            nameInput.style.borderColor = name ? '#ccc' : 'red';
+        if (!firstName || !lastName || !email || !city) {
+            alert("Please provide your First Name, Last Name, Email, and City to download your custom brochure.");
+            firstNameInput.style.borderColor = firstName ? '#ccc' : 'red';
+            lastNameInput.style.borderColor = lastName ? '#ccc' : 'red';
             emailInput.style.borderColor = email ? '#ccc' : 'red';
             cityInput.style.borderColor = city ? '#ccc' : 'red';
             return; 
         }
 
-        nameInput.style.borderColor = '#ccc';
+        firstNameInput.style.borderColor = '#ccc';
+        lastNameInput.style.borderColor = '#ccc';
         emailInput.style.borderColor = '#ccc';
         cityInput.style.borderColor = '#ccc';
 
+        // Combine cleanly for downstream database records
+        const fullName = `${firstName} ${lastName}`;
         const currentModel = db.ModelHome.find(m => m.id === state.currentModelHomeId);
         const modelName = currentModel ? currentModel.Name : 'Custom Home';
 
@@ -1874,7 +1922,7 @@ function openLeadCaptureModal() {
         document.body.insertAdjacentHTML('beforeend', loaderHtml);
 
         try {
-            // --- BUILD HUMAN-READABLE HTML SELECTIONS ---
+            // --- BUILD HUMAN-READABLE SELECTIONS ---
             let formattedSelections = '<ul style="margin:0; padding-left:20px; font-family: Arial, sans-serif; font-size: 14px; color: #333;">';
             let hasSelections = false;
 
@@ -1886,7 +1934,6 @@ function openLeadCaptureModal() {
                 const selectedOptIds = state.customizerSelections[setId] || [];
                 const idsArray = Array.isArray(selectedOptIds) ? selectedOptIds : [selectedOptIds];
                 
-                // --- THE FIX: Filter the visible options BEFORE building the list! ---
                 const visibleOptIds = idsArray.filter(id => {
                     const o = db.Option.find(opt => opt.id == id);
                     return o && !o.hide_in_review;
@@ -1911,31 +1958,44 @@ function openLeadCaptureModal() {
 
             if (!hasSelections) formattedSelections = '<p style="color: #666; font-style: italic;">No custom upgrades selected.</p>';
 
-            // 1. Generate the PDF quietly in the background (Hold it in memory)
-            const pdfBlob = await generatePDFBrochure(name, email, phone, city, modelName);
-
+            // 1. Generate the PDF
+            const pdfBlob = await generatePDFBrochure(fullName, email, phone, city, modelName);
             if (!pdfBlob) throw new Error("Failed to generate PDF blob.");
 
-            // 2. Upload it to the Supabase 'brochures' bucket
-            const safeName = name.replace(/[^a-zA-Z0-9]/g, '_');
-            const fileName = `${Date.now()}_${safeName}_Brochure.pdf`;
+            /*/ --- LOCAL DOWNLOAD TEST ---
+            // This bypasses Supabase and hands the file straight to you!
+            const downloadUrl = URL.createObjectURL(pdfBlob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = "Local_Test_Brochure.pdf";
+            a.click();
+            // ---------------------------*/
+
+            // 2. Bulletproof Filename (Guarantees it is never empty)
+            const cleanName = fullName.trim() ? fullName.replace(/[^a-zA-Z0-9]/g, '_') : 'Client';
+            const fileName = `${Date.now()}_${cleanName}_Brochure.pdf`;
             
+            // 3. Force UPSERT: TRUE to permanently stop conflict RLS errors
             const { error: uploadError } = await supabase.storage
                 .from('brochures')
-                .upload(fileName, pdfBlob, { contentType: 'application/pdf' });
+                .upload(fileName, pdfBlob, { 
+                    contentType: 'application/pdf',
+                    upsert: true // <--- THIS BYPASSES CONFLICT REJECTIONS
+                });
 
             if (uploadError) throw uploadError;
 
-            // 3. Get the public, shareable link for Make.com
+            // 4. Resolve public access routing addresses
             const { data: urlData } = supabase.storage
                 .from('brochures')
                 .getPublicUrl(fileName);
             
             const publicPdfUrl = urlData.publicUrl;
 
-            // 4. Save the Lead to the Database (Now including the PDF link!)
+            // 5. RECORD LEAD PARAMETERS CLEANLY DOWNSTREAM
+            // Transmit individual string entities alongside explicit merged labels
             const { error: dbError } = await supabase.from('Leads').insert([{
-                client_name: name,
+                client_name: fullName,
                 client_email: email,
                 client_phone: phone,
                 client_city: city, 
@@ -1948,12 +2008,11 @@ function openLeadCaptureModal() {
             if (dbError) throw dbError;
 
             try {
-                // REPLACE THIS STRING WITH YOUR ACTUAL MAKE.COM WEBHOOK URL!
                 await fetch('https://hook.us2.make.com/wuo1b07ufi1z5macvgnzj9bh5r5vk32m', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        name: name,
+                        name: fullName,
                         email: email,
                         phone: phone,
                         city: city,
@@ -1965,9 +2024,9 @@ function openLeadCaptureModal() {
                 console.error("Warning: Webhook failed to fire, but lead was saved.", webhookErr);
             }
 
-            await new Promise(resolve => setTimeout(resolve, 6000));
+            await new Promise(resolve => setTimeout(resolve, 5000));
 
-            // 5. --- THE NEW EMAIL SUCCESS SCREEN ---
+            // 5. SUCCESS SCREEN
             const loaderOverlay = document.getElementById('premiumLoaderOverlay');
             if (loaderOverlay) {
                 loaderOverlay.innerHTML = `
@@ -2000,7 +2059,7 @@ function openLeadCaptureModal() {
     });
     
     show('modal');
-} // <-- This brace closes openLeadCaptureModal properly!
+}
 
 // --- AND HERE IS THE SECOND FUNCTION ---
 
@@ -2129,9 +2188,21 @@ async function generatePDFBrochure(clientName, clientEmail, clientPhone, clientC
                         try {
                             const dims = await getSafeDimensions(base64Thumb);
                             if (dims && dims.w > 0) {
-                                const thumbWidth = 30; 
-                                const thumbHeight = (dims.h * thumbWidth) / dims.w; 
-                                doc.addImage(base64Thumb, 'JPEG', 20, yPos, thumbWidth, thumbHeight);
+                                let thumbWidth = 30; 
+                                let thumbHeight = (dims.h * thumbWidth) / dims.w; 
+                                
+                                // --- PREVENT TALL/THIN IMAGES FROM OVERFLOWING ---
+                                const maxHeight = 28; // Safe height so it doesn't hit the text
+                                if (thumbHeight > maxHeight) {
+                                    thumbHeight = maxHeight;
+                                    thumbWidth = (dims.w * thumbHeight) / dims.h;
+                                }
+
+                                // Perfectly center the image horizontally within the 30px space
+                                const offsetX = 20 + ((30 - thumbWidth) / 2);
+                                const offsetY = yPos + ((maxHeight - thumbHeight) / 2);
+
+                                doc.addImage(base64Thumb, 'JPEG', offsetX, offsetY, thumbWidth, thumbHeight);
                             }
                         } catch(e) {}
                     }
@@ -2214,9 +2285,9 @@ if (headerTextLink) {
     });
 }
 
+// --- STABILIZED SNAPSHOT ENGINE ---
 getEl('wizardNextBtn').addEventListener('click', () => {
     const currentStepData = wizardSteps[currentStepIndex];
-    // Add this where your tab/step switching logic happens!
     const currentFloor = wizardSteps[currentStepIndex];
     const isElevationTab = currentFloor && currentFloor.Name && (currentFloor.Name.toLowerCase().includes('elevation') || currentFloor.Name.toLowerCase().includes('exterior'));
     
@@ -2227,6 +2298,7 @@ getEl('wizardNextBtn').addEventListener('click', () => {
     }
     
     if (!currentStepData.isReview) {
+        // INSTANT SNAPSHOT: No delays!
         state.floorSnapshots = state.floorSnapshots || {};
         state.floorSnapshots[currentStepData.id] = captureCanvasSnapshot();
     }

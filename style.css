@@ -126,6 +126,16 @@ img { max-width: 100%; height: auto; display: block; }
         height: 100%; 
     } 
 }
+/* --- DESKTOP PROPORTIONS (Floor Plan Tabs Only) --- */
+/* Target desktop layouts where the app displays floor configurations */
+@media (min-width: 992px) {
+    body.is-floor-plan .canvas-column {
+        width: 65% !important;
+    }
+    body.is-floor-plan .controls-column {
+        width: 35% !important;
+    }
+}
 .controls-column { 
     padding: 30px; 
     background-color: #fafafa;
@@ -1162,11 +1172,11 @@ button.btn-disabled-gear:hover {
     body.is-floor-plan #customizerOptionSets::before {
         content: "✕";
         position: absolute;
-        top: 25px;
+        top: 75px; /* THE FIX: Pushed cleanly below the 60px app header so it is perfectly visible */
         right: 25px;
         width: 40px;
         height: 40px;
-        background: rgba(255,255,255,0.2);
+        background: rgba(255, 255, 255, 0.25);
         color: white;
         border-radius: 50%;
         display: flex;
@@ -1175,6 +1185,8 @@ button.btn-disabled-gear:hover {
         font-size: 20px;
         font-weight: bold;
         z-index: 1001;
+        cursor: pointer;
+        pointer-events: auto; /* Ensures tap gestures register reliably on mobile viewports */
     }
 
     /* Center the row of cards inside the dark overlay */
